@@ -665,6 +665,9 @@ def run():
     # Gera apps_script/index.html para deploy no Google Apps Script
     _write_apps_script(html)
 
+    # Gera data.json para o app React (SteerCo)
+    _write_steerco_data(issues_csv_str, aps_csv_str, datetime.now().strftime('%Y-%m-%d %H:%M'))
+
     # Envia para o Slack
     generated_at_str = datetime.now().strftime('%Y-%m-%d %H:%M')
     send_to_slack(output_path, generated_at_str)
@@ -683,6 +686,20 @@ def _write_apps_script(html):
     with open(index_path, 'w', encoding='utf-8') as f:
         f.write(html)
     print(f'  apps_script/index.html atualizado: {len(html.encode()) // 1024} KB')
+
+def _write_steerco_data(issues_csv, aps_csv, generated_at):
+    """Gera steerco/public/data.json para o app React."""
+    steerco_public = os.path.join(BASE_DIR, 'steerco', 'public')
+    os.makedirs(steerco_public, exist_ok=True)
+    data = {
+        'generated_at': generated_at,
+        'issues_csv':   issues_csv,
+        'aps_csv':      aps_csv,
+    }
+    path = os.path.join(steerco_public, 'data.json')
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False)
+    print(f'  steerco/public/data.json gerado: {len(json.dumps(data).encode()) // 1024} KB')
 
 def send_to_slack(html_path, generated_at):
     """Envia o dashboard HTML para o canal Slack configurado."""
