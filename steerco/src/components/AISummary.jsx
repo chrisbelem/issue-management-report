@@ -55,24 +55,27 @@ Keep it under 200 words. Be direct and frank.`
     <section style={{ marginBottom: 40 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
         <span style={{ fontSize: 18 }}>🤖</span>
-        <h2 style={{ fontSize: 16, fontWeight: 700, color: '#fff' }}>AI Executive Briefing</h2>
-        <span style={{ fontSize: 11, color: '#888899', background: '#1A1A22', padding: '2px 8px', borderRadius: 4 }}>Powered by Claude</span>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1A1A2E' }}>AI Executive Briefing</h2>
+        <span style={{ fontSize: 11, color: '#8A05BE', background: '#F0EDF5', padding: '2px 8px', borderRadius: 4, fontWeight: 600 }}>Powered by Claude</span>
       </div>
 
       <div style={{
-        background: 'linear-gradient(135deg, #111116 0%, #1a0a2e 100%)',
-        border: '1px solid rgba(138,5,190,0.3)',
-        borderRadius: 16, padding: 28,
+        background: '#fff',
+        border: '1px solid rgba(138,5,190,0.2)',
+        borderRadius: 16,
+        padding: 28,
+        boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
       }}>
         {!summary && !loading && !error && (
           <div style={{ textAlign: 'center' }}>
-            <p style={{ color: '#888899', marginBottom: 20, fontSize: 14 }}>
+            <p style={{ color: '#6B6B80', marginBottom: 20, fontSize: 14 }}>
               Generate a plain-language executive summary of the current risk posture for the committee.
             </p>
             <button onClick={generate} style={{
               background: 'linear-gradient(135deg, #8A05BE, #B649FF)',
               color: '#fff', border: 'none', borderRadius: 10, padding: '12px 28px',
               fontSize: 14, fontWeight: 600, cursor: 'pointer', letterSpacing: 0.3,
+              boxShadow: '0 4px 14px rgba(138,5,190,0.3)',
             }}>
               ✨ Generate AI Briefing
             </button>
@@ -80,21 +83,21 @@ Keep it under 200 words. Be direct and frank.`
         )}
 
         {loading && (
-          <div style={{ textAlign: 'center', color: '#B649FF', padding: 20 }}>
-            <div style={{ width: 32, height: 32, border: '3px solid #8A05BE', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+          <div style={{ textAlign: 'center', color: '#8A05BE', padding: 20 }}>
+            <div style={{ width: 32, height: 32, border: '3px solid #B649FF', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
             Generating executive briefing…
             <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
           </div>
         )}
 
-        {error && <p style={{ color: '#FF4455', fontSize: 13 }}>Error: {error}</p>}
+        {error && <p style={{ color: '#E0002A', fontSize: 13 }}>Error: {error}</p>}
 
         {summary && (
           <>
-            <div style={{ fontSize: 14, lineHeight: 1.8, color: '#E0E0E5', whiteSpace: 'pre-wrap' }}>{summary}</div>
-            <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', justifyContent: 'flex-end' }}>
+            <div style={{ fontSize: 14, lineHeight: 1.9, color: '#1A1A2E', whiteSpace: 'pre-wrap' }}>{summary}</div>
+            <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(0,0,0,0.07)', display: 'flex', justifyContent: 'flex-end' }}>
               <button onClick={generate} style={{
-                background: 'transparent', color: '#B649FF', border: '1px solid #B649FF55',
+                background: 'transparent', color: '#8A05BE', border: '1px solid #8A05BE44',
                 borderRadius: 8, padding: '8px 16px', fontSize: 12, cursor: 'pointer',
               }}>↺ Regenerate</button>
             </div>

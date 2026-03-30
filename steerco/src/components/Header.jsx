@@ -5,7 +5,7 @@ export default function Header({ generatedAt }) {
   return (
     <header style={{
       padding: '32px 0 24px',
-      borderBottom: '1px solid rgba(255,255,255,0.08)',
+      borderBottom: '1px solid rgba(0,0,0,0.08)',
       marginBottom: 32,
       display: 'flex',
       alignItems: 'center',
@@ -14,7 +14,6 @@ export default function Header({ generatedAt }) {
       gap: 16,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-        {/* Nubank logo mark */}
         <div style={{
           width: 44, height: 44,
           background: 'linear-gradient(135deg, #8A05BE, #B649FF)',
@@ -26,14 +25,14 @@ export default function Header({ generatedAt }) {
           <div style={{ fontSize: 11, fontWeight: 600, color: '#8A05BE', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 2 }}>
             Global Lending · BCO
           </div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#fff', lineHeight: 1 }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1A1A2E', lineHeight: 1 }}>
             Risk Dashboard — {month}
           </h1>
         </div>
       </div>
       <div style={{ textAlign: 'right' }}>
-        <div style={{ fontSize: 11, color: '#888899', marginBottom: 2 }}>Last updated</div>
-        <div style={{ fontSize: 13, fontWeight: 500, color: '#B649FF' }}>{generatedAt}</div>
+        <div style={{ fontSize: 11, color: '#6B6B80', marginBottom: 2 }}>Last updated</div>
+        <div style={{ fontSize: 13, fontWeight: 500, color: '#8A05BE' }}>{generatedAt}</div>
       </div>
     </header>
   )

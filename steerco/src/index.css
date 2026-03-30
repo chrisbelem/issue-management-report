@@ -5,16 +5,16 @@
 :root {
   --nu-purple:    #8A05BE;
   --nu-purple-lt: #B649FF;
-  --bg:           #06060A;
-  --surface:      #111116;
-  --surface-2:    #1A1A22;
-  --border:       rgba(255,255,255,0.08);
-  --text:         #F0F0F5;
-  --text-muted:   #888899;
-  --red:          #FF4455;
-  --amber:        #FFB800;
-  --green:        #00C48C;
-  --blue:         #4499FF;
+  --bg:           #F4F4F6;
+  --surface:      #FFFFFF;
+  --surface-2:    #F0EDF5;
+  --border:       rgba(0,0,0,0.08);
+  --text:         #1A1A2E;
+  --text-muted:   #6B6B80;
+  --red:          #E0002A;
+  --amber:        #D48000;
+  --green:        #007A57;
+  --blue:         #1A6FCC;
 }
 
 body {
@@ -28,5 +28,5 @@ body {
 #root { min-height: 100vh; }
 
 ::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: var(--surface); }
+::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--nu-purple); border-radius: 3px; }
