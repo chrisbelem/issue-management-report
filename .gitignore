@@ -4,8 +4,6 @@
 # Ignore raw input CSVs — they contain sensitive data
 data/input/*.csv
 
-# Ignore generated output
-output/dashboard.html
 
 # Python
 __pycache__/
