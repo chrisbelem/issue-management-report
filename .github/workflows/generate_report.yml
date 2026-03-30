@@ -31,6 +31,24 @@ jobs:
           DATABRICKS_WAREHOUSE_ID: ${{ secrets.DATABRICKS_WAREHOUSE_ID }}
         run: python scripts/generate_report.py
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install clasp
+        run: npm install -g @google/clasp
+
+      - name: Deploy to Google Apps Script
+        env:
+          DEPLOYMENT_ID: ${{ secrets.APPS_SCRIPT_DEPLOYMENT_ID }}
+        run: |
+          echo '${{ secrets.CLASP_CREDENTIALS }}' > ~/.clasprc.json
+          cd apps_script
+          clasp push --force
+          clasp deploy --deploymentId "$DEPLOYMENT_ID" --description "Weekly update $(date +'%Y-%m-%d')"
+          echo "✓ Publicado no Apps Script"
+
       - name: Publish to Confluence
         env:
           CONFLUENCE_URL:     ${{ secrets.CONFLUENCE_URL }}
@@ -39,7 +57,7 @@ jobs:
           CONFLUENCE_PAGE_ID: ${{ secrets.CONFLUENCE_PAGE_ID }}
         run: |
           python3 - <<'EOF'
-          import os, urllib.request, urllib.parse, base64, json
+          import os, urllib.request, base64, json
 
           url     = os.environ['CONFLUENCE_URL']
           email   = os.environ['CONFLUENCE_EMAIL']
@@ -52,7 +70,6 @@ jobs:
               'X-Atlassian-Token': 'no-check',
           }
 
-          # 1. Verifica se já existe o anexo index.html
           req = urllib.request.Request(
               f"{url}/wiki/rest/api/content/{page_id}/child/attachment?filename=index.html",
               headers={**headers_base, 'Accept': 'application/json'}
@@ -63,51 +80,28 @@ jobs:
           with open('docs/index.html', 'rb') as f:
               file_data = f.read()
 
+          boundary = 'boundary123'
+          body = (
+              f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="index.html"\r\nContent-Type: text/html\r\n\r\n'
+          ).encode() + file_data + f'\r\n--{boundary}--\r\n'.encode()
+
           results = existing.get('results', [])
           if results:
-              # Atualiza anexo existente
               att_id = results[0]['id']
-              boundary = 'boundary123'
-              body = (
-                  f'--{boundary}\r\n'
-                  f'Content-Disposition: form-data; name="file"; filename="index.html"\r\n'
-                  f'Content-Type: text/html\r\n\r\n'
-              ).encode() + file_data + f'\r\n--{boundary}--\r\n'.encode()
-
-              req = urllib.request.Request(
-                  f"{url}/wiki/rest/api/content/{page_id}/child/attachment/{att_id}/data",
-                  data=body, method='POST',
-                  headers={**headers_base, 'Content-Type': f'multipart/form-data; boundary={boundary}'}
-              )
-              print(f"Atualizando anexo {att_id}...")
+              endpoint = f"{url}/wiki/rest/api/content/{page_id}/child/attachment/{att_id}/data"
           else:
-              # Cria novo anexo
-              boundary = 'boundary123'
-              body = (
-                  f'--{boundary}\r\n'
-                  f'Content-Disposition: form-data; name="file"; filename="index.html"\r\n'
-                  f'Content-Type: text/html\r\n\r\n'
-              ).encode() + file_data + f'\r\n--{boundary}--\r\n'.encode()
+              endpoint = f"{url}/wiki/rest/api/content/{page_id}/child/attachment"
 
-              req = urllib.request.Request(
-                  f"{url}/wiki/rest/api/content/{page_id}/child/attachment",
-                  data=body, method='POST',
-                  headers={**headers_base, 'Content-Type': f'multipart/form-data; boundary={boundary}'}
-              )
-              print("Criando anexo...")
-
+          req = urllib.request.Request(endpoint, data=body, method='POST',
+              headers={**headers_base, 'Content-Type': f'multipart/form-data; boundary={boundary}'})
           with urllib.request.urlopen(req) as r:
-              resp = json.loads(r.read())
-          results = resp.get('results', [resp])
-          att = results[0] if results else resp
-          print(f"✓ Publicado no Confluence: {url}/wiki/spaces/lending/pages/{page_id}")
-          print(f"  Anexo: {att.get('title', 'index.html')}")
+              print(f"✓ Publicado no Confluence: {url}/wiki/spaces/lending/pages/{page_id}")
           EOF
 
       - name: Commit dashboard to repo
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/index.html
+          git add docs/index.html apps_script/Code.gs
           git diff --cached --quiet && echo "Sem mudanças." || \
             git commit -m "chore: update dashboard $(date +'%Y-%m-%d')" && git push
