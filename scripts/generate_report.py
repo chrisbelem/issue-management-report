@@ -39,7 +39,7 @@ OUTPUT_DIR   = os.path.join(BASE_DIR, 'docs')       # GitHub Pages serve de /doc
 ENV_PATH     = os.path.join(BASE_DIR, '.env')
 
 # ─── Configurações editáveis ───────────────────────────────────────────────────
-BCO_NAMES         = ['Christiane Belem', 'Ingrid Sgulmar']
+BCO_NAMES         = ['Ingrid Sgulmar']
 ALERT_WINDOW_DAYS = 14
 NPF_BASE_URL      = 'https://nubank.atlassian.net/browse/'
 PROJAC_BASE_URL   = 'https://backoffice.ist.nubank.world/projac/#/im/issues/'
