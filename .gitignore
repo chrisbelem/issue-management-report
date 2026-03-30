@@ -1,3 +1,6 @@
+# Credenciais — NUNCA commitar
+.env
+
 # Ignore raw input CSVs — they contain sensitive data
 data/input/*.csv
 
