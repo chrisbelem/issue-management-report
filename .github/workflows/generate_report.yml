@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write   # necessário para commitar o dashboard.html
+      contents: write
 
     steps:
       - name: Checkout repo
@@ -31,7 +31,80 @@ jobs:
           DATABRICKS_WAREHOUSE_ID: ${{ secrets.DATABRICKS_WAREHOUSE_ID }}
         run: python scripts/generate_report.py
 
-      - name: Publish dashboard to GitHub Pages
+      - name: Publish to Confluence
+        env:
+          CONFLUENCE_URL:     ${{ secrets.CONFLUENCE_URL }}
+          CONFLUENCE_EMAIL:   ${{ secrets.CONFLUENCE_EMAIL }}
+          CONFLUENCE_TOKEN:   ${{ secrets.CONFLUENCE_TOKEN }}
+          CONFLUENCE_PAGE_ID: ${{ secrets.CONFLUENCE_PAGE_ID }}
+        run: |
+          python3 - <<'EOF'
+          import os, urllib.request, urllib.parse, base64, json
+
+          url     = os.environ['CONFLUENCE_URL']
+          email   = os.environ['CONFLUENCE_EMAIL']
+          token   = os.environ['CONFLUENCE_TOKEN']
+          page_id = os.environ['CONFLUENCE_PAGE_ID']
+
+          creds = base64.b64encode(f"{email}:{token}".encode()).decode()
+          headers_base = {
+              'Authorization': f'Basic {creds}',
+              'X-Atlassian-Token': 'no-check',
+          }
+
+          # 1. Verifica se já existe o anexo index.html
+          req = urllib.request.Request(
+              f"{url}/wiki/rest/api/content/{page_id}/child/attachment?filename=index.html",
+              headers={**headers_base, 'Accept': 'application/json'}
+          )
+          with urllib.request.urlopen(req) as r:
+              existing = json.loads(r.read())
+
+          with open('docs/index.html', 'rb') as f:
+              file_data = f.read()
+
+          results = existing.get('results', [])
+          if results:
+              # Atualiza anexo existente
+              att_id = results[0]['id']
+              boundary = 'boundary123'
+              body = (
+                  f'--{boundary}\r\n'
+                  f'Content-Disposition: form-data; name="file"; filename="index.html"\r\n'
+                  f'Content-Type: text/html\r\n\r\n'
+              ).encode() + file_data + f'\r\n--{boundary}--\r\n'.encode()
+
+              req = urllib.request.Request(
+                  f"{url}/wiki/rest/api/content/{page_id}/child/attachment/{att_id}/data",
+                  data=body, method='POST',
+                  headers={**headers_base, 'Content-Type': f'multipart/form-data; boundary={boundary}'}
+              )
+              print(f"Atualizando anexo {att_id}...")
+          else:
+              # Cria novo anexo
+              boundary = 'boundary123'
+              body = (
+                  f'--{boundary}\r\n'
+                  f'Content-Disposition: form-data; name="file"; filename="index.html"\r\n'
+                  f'Content-Type: text/html\r\n\r\n'
+              ).encode() + file_data + f'\r\n--{boundary}--\r\n'.encode()
+
+              req = urllib.request.Request(
+                  f"{url}/wiki/rest/api/content/{page_id}/child/attachment",
+                  data=body, method='POST',
+                  headers={**headers_base, 'Content-Type': f'multipart/form-data; boundary={boundary}'}
+              )
+              print("Criando anexo...")
+
+          with urllib.request.urlopen(req) as r:
+              resp = json.loads(r.read())
+          results = resp.get('results', [resp])
+          att = results[0] if results else resp
+          print(f"✓ Publicado no Confluence: {url}/wiki/spaces/lending/pages/{page_id}")
+          print(f"  Anexo: {att.get('title', 'index.html')}")
+          EOF
+
+      - name: Commit dashboard to repo
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
