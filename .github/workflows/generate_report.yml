@@ -38,6 +38,12 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Build SteerCo React app
+        run: |
+          cd steerco
+          npm ci
+          npm run build
+
       - name: Install clasp
         run: npm install -g @google/clasp
 
@@ -104,6 +110,6 @@ jobs:
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add docs/index.html apps_script/Code.gs apps_script/index.html
+          git add docs/index.html docs/steerco/ apps_script/Code.gs apps_script/index.html
           git diff --cached --quiet && echo "Sem mudanças." || \
             git commit -m "chore: update dashboard $(date +'%Y-%m-%d')" && git push
