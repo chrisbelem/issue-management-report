@@ -272,6 +272,70 @@ def read_people_mapping():
             rows.append(dict(row))
     return build_people_mapping(rows)
 
+def enrich_people_map_from_org(people_map, issues_rows, ap_rows):
+    """
+    Para nomes não encontrados em people_map, tenta buscar BU/BA automaticamente
+    no Databricks (productivity_nu_employee_with_org_structure) usando o e-mail
+    mapeado via projac_issues. Atualiza people_map in-place.
+    """
+    # 1. Coleta name→email das issues (responsible + accountable)
+    name_to_email = {}
+    for row in issues_rows:
+        for nk, ek in (('responsible_name', 'responsible_email'),
+                       ('accountable_name', 'accountable_email')):
+            n = safe(row.get(nk, ''))
+            e = safe(row.get(ek, ''))
+            if n and e:
+                name_to_email[n.lower()] = e
+
+    # 2. Todos os nomes que aparecem como dono de ação
+    all_names = set()
+    for row in issues_rows:
+        for f in ('responsible_name', 'accountable_name', 'reporter_name'):
+            n = safe(row.get(f, ''))
+            if n:
+                all_names.add(n)
+    for row in ap_rows:
+        for n in re.sub(r'[\[\]"\'\\]', '', safe(row.get('ap_assignee_name', ''))).split(','):
+            n = n.strip()
+            if n:
+                all_names.add(n)
+
+    # 3. Filtra quem ainda não tem mapeamento e tem e-mail conhecido
+    missing_with_email = {}
+    for name in all_names:
+        if name.lower() not in people_map:
+            email = name_to_email.get(name.lower(), '')
+            if email:
+                missing_with_email[email] = name
+
+    if not missing_with_email:
+        return
+
+    print(f'[generate_report] Buscando BU/BA de {len(missing_with_email)} pessoas no org structure...')
+    emails_sql = ', '.join(f"'{e}'" for e in missing_with_email.keys())
+    try:
+        org_rows = db_run_query(
+            f"SELECT ident__email, business_unit_name, business_area_name "
+            f"FROM ist__dataset.productivity_nu_employee_with_org_structure "
+            f"WHERE ident__email IN ({emails_sql})"
+        )
+    except Exception as e:
+        print(f'  AVISO: falha ao buscar org structure: {e}')
+        return
+
+    found = 0
+    for row in org_rows:
+        email = safe(row.get('ident__email', ''))
+        bu    = safe(row.get('business_unit_name', '')) or 'TBD'
+        ba    = safe(row.get('business_area_name', '')) or 'TBD'
+        name  = missing_with_email.get(email, '')
+        if name:
+            people_map[name.lower()] = {'bu': bu, 'ba': ba}
+            found += 1
+
+    print(f'  -> {found} pessoas enriquecidas automaticamente via org structure')
+
 # ─── Lógica de AP ─────────────────────────────────────────────────────────────
 
 STATUS_PRIORITY = {
@@ -398,7 +462,10 @@ def run():
 
     ap_index = build_ap_index(ap_rows)
 
-    # ── 3. Enriquecer Issues ──────────────────────────────────────────────────
+    # ── 3. Auto-enriquecer mapeamento de pessoas via org structure ────────────
+    enrich_people_map_from_org(people_map, issues_rows, ap_rows)
+
+    # ── 4. Enriquecer Issues ──────────────────────────────────────────────────
     print('[generate_report] Enriquecendo Issues...')
     tbd_people = set()
 
@@ -456,7 +523,7 @@ def run():
         out['Business Area']       = ba
         issues_output.append(out)
 
-    # ── 4. Enriquecer Action Plans ─────────────────────────────────────────────
+    # ── 5. Enriquecer Action Plans ─────────────────────────────────────────────
     print('[generate_report] Enriquecendo Action Plans...')
 
     APS_FIELDS = [
@@ -507,18 +574,18 @@ def run():
         out['Business Area']       = ba
         aps_output.append(out)
 
-    # ── 5. Alertas de mapeamento incompleto ────────────────────────────────────
+    # ── 6. Alertas de mapeamento incompleto ────────────────────────────────────
     if tbd_people:
         print(f'\nAVISO: {len(tbd_people)} pessoa(s) sem BU/BA no mapeamento:')
         for p in sorted(tbd_people):
             print(f'  -> {p}')
         print(f'  Adicione em: data/config/people_mapping.csv\n')
 
-    # ── 6. Gerar strings CSV ───────────────────────────────────────────────────
+    # ── 7. Gerar strings CSV ───────────────────────────────────────────────────
     issues_csv_str = to_csv_string(issues_output, ISSUES_FIELDS)
     aps_csv_str    = to_csv_string(aps_output, APS_FIELDS)
 
-    # ── 7. Injetar no template HTML ────────────────────────────────────────────
+    # ── 8. Injetar no template HTML ────────────────────────────────────────────
     template_path = os.path.join(TEMPLATE_DIR, 'dashboard_template.html')
     if not os.path.exists(template_path):
         print(f'ERRO: template não encontrado: {template_path}')
