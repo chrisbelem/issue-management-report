@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Issues and Action Plans Dashboard — %%GENERATED_AT%%</title>
+
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/@ttskch/select2-bootstrap4-theme@x.x.x/dist/select2-bootstrap4.min.css" rel="stylesheet">
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8f9fa; }
+        .nav-tabs .nav-link { border-color: #dee2e6 #dee2e6 #fff; color: #495057; font-weight: 500; }
+        .nav-tabs .nav-link.active { color: #007bff; border-color: #dee2e6 #dee2e6 #f8f9fa; background-color: #f8f9fa; }
+        .tab-content { background-color: #f8f9fa; border: 1px solid #dee2e6; border-top: 0; padding: 2rem; border-radius: 0 0 0.25rem 0.25rem; }
+        .kpi-card { background-color: #ffffff; padding: 1.5rem; border-radius: 0.5rem; box-shadow: 0 4px 8px rgba(0,0,0,0.05); border: 1px solid #e9ecef; text-align: center; margin-bottom: 1rem; }
+        .kpi-card h3 { font-size: 2.5rem; font-weight: 700; color: #714f8fff; margin: 0; }
+        .kpi-card p { font-size: 1rem; color: #6c757d; margin: 0; }
+        .kpi-card.late h3 {  color: #d00000ff; }
+        .table-responsive { max-height: 60vh; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.25rem; }
+        h2 { font-weight: 600; margin-bottom: 1.5rem; color: #343a40; }
+        .form-control { border-radius: 0.25rem; }
+        hr.section-divider { margin: 3rem 0; border-top: 2px solid #e9ecef; }
+        .tab-toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem; }
+
+        /* Ajuste Dashboard Filter Row */
+        .dashboard-header-bar { display: flex; justify-content: space-between; align-items: flex-end; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+        .dashboard-filters-wrapper { display: flex; gap: 1rem; flex-wrap: wrap; flex: 1; }
+        .dashboard-filters-wrapper .form-group { min-width: 150px; flex: 1; margin-bottom: 0; }
+
+        .high-total { background-color: #fff3cd !important; }
+
+        /* Ajustes visuais para o Select2 parecer com Bootstrap */
+        .select2-container--bootstrap4 .select2-selection--multiple .select2-selection__choice {
+            background-color: #007bff;
+            border: 1px solid #006fe6;
+            color: #fff;
+        }
+        .select2-container--bootstrap4 .select2-selection--multiple .select2-selection__choice__remove {
+            color: #fff;
+        }
+        /* Business Area (Standard Multi Select) Height */
+        select[multiple].form-control { height: 38px; }
+        /* Esconde o select original enquanto o select2 carrega */
+        .select2-hidden-accessible { border: 0 !important; clip: rect(0 0 0 0) !important; height: 1px !important; margin: -1px !important; overflow: hidden !important; padding: 0 !important; position: absolute !important; width: 1px !important; }
+
+        .footer-bar { text-align: center; color: #6c757d; font-size: 0.8rem; margin-top: 2rem; padding: 1rem 0; border-top: 1px solid #dee2e6; }
+    </style>
+</head>
+<body>
+
+<div class="container-fluid my-4">
+    <h1 class="mb-1 text-center font-weight-bold">Projac Issues &amp; Action Plans</h1>
+    <p class="text-center text-muted mb-4" style="font-size:0.85rem;">Generated: %%GENERATED_AT%%</p>
+
+    <ul class="nav nav-tabs" id="myTab" role="tablist">
+        <li class="nav-item">
+            <a class="nav-link active" id="dashboard-tab" data-toggle="tab" href="#dashboard" role="tab" aria-controls="dashboard" aria-selected="true">Dashboard</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="issues-tab" data-toggle="tab" href="#issues" role="tab" aria-controls="issues" aria-selected="false">Issues</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link" id="aps-tab" data-toggle="tab" href="#aps" role="tab" aria-controls="aps" aria-selected="false">Action Plans</a>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="myTabContent">
+
+        <!-- ══════════════════ DASHBOARD TAB ══════════════════ -->
+        <div class="tab-pane fade show active" id="dashboard" role="tabpanel" aria-labelledby="dashboard-tab">
+            <div class="dashboard-header-bar">
+                <div class="dashboard-filters-wrapper">
+                    <div class="form-group">
+                        <label for="pendingFromFilterDashboard"><strong>Action Pending From:</strong></label>
+                        <select class="form-control" id="pendingFromFilterDashboard">
+                            <option value="">Show All</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="typeFilterDashboard"><strong>Filter by Type:</strong></label>
+                        <select class="form-control" id="typeFilterDashboard">
+                            <option value="">Show All</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="countryFilterDashboard"><strong>Filter by Country:</strong></label>
+                        <select class="form-control" id="countryFilterDashboard">
+                            <option value="">Show All</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="businessAreaFilterDashboard"><strong>Business Area (Multi):</strong></label>
+                        <select class="form-control select2-multi" id="businessAreaFilterDashboard" multiple="multiple" style="width: 100%">
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <button id="resetDashboardFiltersBtn" class="btn btn-outline-secondary btn-sm">
+                        Reset filters
+                    </button>
+                </div>
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-lg-3 col-md-6">
+                    <div class="kpi-card">
+                        <h3 id="kpi-total-issues">-</h3>
+                        <p>Late Issues (Filtered)</p>
+                    </div>
+                </div>
+                <div class="col-lg-3 col-md-6">
+                    <div class="kpi-card late">
+                        <h3 id="kpi-late-issues">-</h3>
+                        <p>Late Issues (All Countries)</p>
+                    </div>
+                </div>
+                <div class="col-lg-3 col-md-6">
+                    <div class="kpi-card">
+                        <h3 id="kpi-total-aps">-</h3>
+                        <p>Critical APs (Filtered)</p>
+                    </div>
+                </div>
+                <div class="col-lg-3 col-md-6">
+                    <div class="kpi-card late">
+                        <h3 id="kpi-late-aps">-</h3>
+                        <p>Critical APs (All Countries)</p>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
+            <h2>Late Issues &amp; Action Plans</h2>
+            <div id="dashboardPivotContainer" class="table-responsive">
+            </div>
+        </div>
+
+        <!-- ══════════════════ ISSUES TAB ══════════════════ -->
+        <div class="tab-pane fade" id="issues" role="tabpanel" aria-labelledby="issues-tab">
+            <div class="tab-toolbar">
+                <h2>Issues List</h2>
+                <div>
+                    <button id="resetIssuesFiltersBtn" class="btn btn-outline-secondary btn-sm mr-2">
+                        Reset filters
+                    </button>
+                    <button id="exportIssuesBtn" class="btn btn-success">Export to CSV</button>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <div class="form-group">
+                        <label for="actionOwnerFilterIssues"><strong>Action Owner (Search/Multi):</strong></label>
+                        <select class="form-control select2-multi" id="actionOwnerFilterIssues" multiple="multiple" style="width: 100%">
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="form-group">
+                        <label for="businessAreaFilterIssues"><strong>Business Area (Multi):</strong></label>
+                        <select class="form-control select2-multi" id="businessAreaFilterIssues" multiple="multiple" style="width: 100%">
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-3">
+                    <div class="form-group">
+                        <label for="issueStatusFilter"><strong>Filter by Status:</strong></label>
+                        <select class="form-control" id="issueStatusFilter">
+                            <option value="">Show All</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-group">
+                        <label for="countryFilterIssues"><strong>Filter by Country:</strong></label>
+                        <select class="form-control" id="countryFilterIssues">
+                            <option value="">Show All</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-group">
+                        <label for="typeFilterIssues"><strong>Filter by Type:</strong></label>
+                        <select class="form-control" id="typeFilterIssues">
+                            <option value="">Show All</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-group">
+                        <label for="pendingFromFilterIssues"><strong>Action Pending From:</strong></label>
+                        <select class="form-control" id="pendingFromFilterIssues">
+                            <option value="">Show All</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="kpi-card">
+                        <h3 id="kpi-issues-total">-</h3>
+                        <p>Total Issues Shown</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="kpi-card late">
+                        <h3 id="kpi-issues-late">-</h3>
+                        <p>Late Issues Shown</p>
+                    </div>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-striped table-hover table-sm" id="issuesTable">
+                    <thead class="thead-dark"></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ══════════════════ ACTION PLANS TAB ══════════════════ -->
+        <div class="tab-pane fade" id="aps" role="tabpanel" aria-labelledby="aps-tab">
+            <div class="tab-toolbar">
+                <h2>Action Plans List</h2>
+                <div>
+                    <button id="resetApsFiltersBtn" class="btn btn-outline-secondary btn-sm mr-2">
+                        Reset filters
+                    </button>
+                    <button id="exportApsBtn" class="btn btn-success">Export to CSV</button>
+                </div>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <div class="form-group">
+                        <label for="actionOwnerFilterAps"><strong>Action Owner (Search/Multi):</strong></label>
+                        <select class="form-control select2-multi" id="actionOwnerFilterAps" multiple="multiple" style="width: 100%">
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="form-group">
+                        <label for="businessAreaFilterAps"><strong>Business Area (Multi):</strong></label>
+                        <select class="form-control select2-multi" id="businessAreaFilterAps" multiple="multiple" style="width: 100%">
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col-md-3">
+                    <div class="form-group">
+                        <label for="apStatusFilter"><strong>Filter by Status:</strong></label>
+                        <select class="form-control" id="apStatusFilter">
+                            <option value="">Show All</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-group">
+                        <label for="countryFilterAps"><strong>Filter by Country:</strong></label>
+                        <select class="form-control" id="countryFilterAps">
+                            <option value="">Show All</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-group">
+                        <label for="typeFilterAps"><strong>Filter by Type:</strong></label>
+                        <select class="form-control" id="typeFilterAps">
+                            <option value="">Show All</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-group">
+                        <label for="pendingFromFilterAps"><strong>Action Pending From:</strong></label>
+                        <select class="form-control" id="pendingFromFilterAps">
+                            <option value="">Show All</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="kpi-card">
+                        <h3 id="kpi-aps-total">-</h3>
+                        <p>Total APs Shown</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="kpi-card late">
+                        <h3 id="kpi-aps-late">-</h3>
+                        <p>Late APs Shown</p>
+                    </div>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-striped table-hover table-sm" id="apsTable">
+                    <thead class="thead-dark"></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+    </div><!-- /.tab-content -->
+
+    <div class="footer-bar">
+        Global Lending — Issue Management Report &nbsp;|&nbsp; Generated: %%GENERATED_AT%%
+    </div>
+</div><!-- /.container-fluid -->
+
+<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
+<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
+
+<script>
+    // ── Embedded CSV Data (injected by generate_report.py) ─────────────────────
+    const issuesCsv = `%%ISSUES_CSV%%`;
+    const apsCsv    = `%%APS_CSV%%`;
+
+    // ── Bootstrap + Select2 init ────────────────────────────────────────────────
+    document.addEventListener('DOMContentLoaded', function() {
+        const issuesData = parseCSV(issuesCsv);
+        const apsData    = parseCSV(apsCsv);
+
+        const issuesHiddenColumns = [
+            'projac_link', 'key', 'reporter_name', 'squad_reporter',
+            'created_at', 'updated_at', 'due_date_at', 'completed_at',
+            'responsible_email', 'accountable_email', 'process_journey_macroprocess__name',
+            'origin', 'subcategory', 'residual_risk_level', 'responsible_name',
+            'accountable_name', 'business_units'
+        ];
+
+        const apsHiddenColumns = [
+            'ap_link_projac', 'issue_link_projac', 'Issue Code', 'issue rating',
+            'issue_status', 'issue_summary', 'issue_due_date_at', 'issue_subcategory',
+            'ap_created_at', 'ap_due_date_at', 'ap_business_unit', 'ap_assignee_name'
+        ];
+
+        // ── Shared filter options ────────────────────────────────────────────────
+        const allCountries    = [...new Set([...issuesData.map(i => i.countries), ...apsData.map(a => a.ap_country)])].filter(Boolean).sort();
+        const allPendingFrom  = [...new Set([...issuesData.map(i => i['Action Pending From']), ...apsData.map(a => a['Action Pending From'])])].filter(Boolean).sort();
+        const allTypes        = [...new Set([...issuesData.map(i => i.Type), ...apsData.map(a => a.Type)])].filter(Boolean).sort();
+        const allBusinessAreas = [...new Set([...issuesData.map(i => i['Business Area']), ...apsData.map(a => a['Business Area'])])].filter(Boolean).sort();
+
+        // ── Dashboard ────────────────────────────────────────────────────────────
+        populateFilterWithOptions('countryFilterDashboard',    allCountries);
+        populateFilterWithOptions('pendingFromFilterDashboard', allPendingFrom);
+        populateFilterWithOptions('typeFilterDashboard',       allTypes);
+        populateFilterWithOptions('businessAreaFilterDashboard', allBusinessAreas);
+
+        const dashboardFilters = ['countryFilterDashboard', 'pendingFromFilterDashboard', 'typeFilterDashboard', 'businessAreaFilterDashboard'];
+        dashboardFilters.forEach(id => {
+            $(`#${id}`).on('change', () => updateDashboard(issuesData, apsData));
+        });
+
+        document.getElementById('resetDashboardFiltersBtn').addEventListener('click', () => {
+            document.getElementById('countryFilterDashboard').value = '';
+            document.getElementById('pendingFromFilterDashboard').value = '';
+            document.getElementById('typeFilterDashboard').value = '';
+            $('#businessAreaFilterDashboard').val(null).trigger('change');
+            updateDashboard(issuesData, apsData);
+        });
+
+        updateDashboard(issuesData, apsData);
+
+        // ── Issues Tab ───────────────────────────────────────────────────────────
+        const issuesVisibleColumns = [
+            'Type', 'code', 'NP&F+', 'countries', 'Business Area', 'status', 'summary',
+            'overall_risk_rating', 'Action', 'Action Owner', 'Action Pending From'
+        ];
+
+        populateTable(issuesData, 'issuesTable', 'code', 'projac_link', issuesHiddenColumns, issuesVisibleColumns);
+
+        populateFilter(issuesData, 'issueStatusFilter',      'status');
+        populateFilter(issuesData, 'countryFilterIssues',    'countries');
+        populateFilter(issuesData, 'typeFilterIssues',       'Type');
+        populateFilter(issuesData, 'pendingFromFilterIssues','Action Pending From');
+        populateFilter(issuesData, 'businessAreaFilterIssues','Business Area');
+        populateFilter(issuesData, 'actionOwnerFilterIssues','Action Owner');
+
+        const issueFilters = [
+            { id: 'actionOwnerFilterIssues',  colIndex: 9,  type: 'multi' },
+            { id: 'issueStatusFilter',        colIndex: 5 },
+            { id: 'countryFilterIssues',      colIndex: 3 },
+            { id: 'businessAreaFilterIssues', colIndex: 4,  type: 'multi' },
+            { id: 'typeFilterIssues',         colIndex: 0 },
+            { id: 'pendingFromFilterIssues',  colIndex: 10 }
+        ];
+
+        issueFilters.forEach(filter => {
+            $(`#${filter.id}`).on('change input', () => applyTableFilters('issuesTable', issueFilters));
+        });
+
+        document.getElementById('exportIssuesBtn').addEventListener('click', () => exportTableToCSV('issuesTable', 'issues.csv'));
+
+        document.getElementById('resetIssuesFiltersBtn').addEventListener('click', () => {
+            issueFilters.forEach(f => {
+                if (f.type === 'multi') {
+                    $(`#${f.id}`).val(null).trigger('change');
+                } else {
+                    document.getElementById(f.id).value = '';
+                }
+            });
+            applyTableFilters('issuesTable', issueFilters);
+        });
+
+        applyTableFilters('issuesTable', issueFilters);
+
+        // ── APs Tab ──────────────────────────────────────────────────────────────
+        const apsVisibleColumns = [
+            'Type', 'ap_code', 'ap_country', 'Business Area', 'ap_status', 'ap_summary',
+            'issue rating', 'Action', 'Action Owner', 'Action Pending From'
+        ];
+
+        populateTable(apsData, 'apsTable', 'ap_code', 'ap_link_projac', apsHiddenColumns, apsVisibleColumns);
+
+        populateFilter(apsData, 'apStatusFilter',        'ap_status');
+        populateFilter(apsData, 'countryFilterAps',      'ap_country');
+        populateFilter(apsData, 'typeFilterAps',         'Type');
+        populateFilter(apsData, 'pendingFromFilterAps',  'Action Pending From');
+        populateFilter(apsData, 'businessAreaFilterAps', 'Business Area');
+        populateFilter(apsData, 'actionOwnerFilterAps',  'Action Owner');
+
+        const apFilters = [
+            { id: 'actionOwnerFilterAps',   colIndex: 8, type: 'multi' },
+            { id: 'apStatusFilter',         colIndex: 4 },
+            { id: 'countryFilterAps',       colIndex: 2 },
+            { id: 'businessAreaFilterAps',  colIndex: 3, type: 'multi' },
+            { id: 'typeFilterAps',          colIndex: 0 },
+            { id: 'pendingFromFilterAps',   colIndex: 9 }
+        ];
+
+        apFilters.forEach(filter => {
+            $(`#${filter.id}`).on('change input', () => applyTableFilters('apsTable', apFilters));
+        });
+
+        document.getElementById('exportApsBtn').addEventListener('click', () => exportTableToCSV('apsTable', 'action-plans.csv'));
+
+        document.getElementById('resetApsFiltersBtn').addEventListener('click', () => {
+            apFilters.forEach(f => {
+                if (f.type === 'multi') {
+                    $(`#${f.id}`).val(null).trigger('change');
+                } else {
+                    document.getElementById(f.id).value = '';
+                }
+            });
+            applyTableFilters('apsTable', apFilters);
+        });
+
+        applyTableFilters('apsTable', apFilters);
+
+        // ── Select2 ──────────────────────────────────────────────────────────────
+        $('.select2-multi').select2({
+            theme: 'bootstrap4',
+            placeholder: 'Select or type to search...',
+            allowClear: true,
+            width: '100%',
+            closeOnSelect: false
+        });
+    });
+
+    // ── Helpers ─────────────────────────────────────────────────────────────────
+
+    function getSelectValues(selectId) {
+        const val = $(`#${selectId}`).val();
+        return val || [];
+    }
+
+    function parseCSV(csvText) {
+        const trimmed = csvText.trim();
+        if (!trimmed) return [];
+        const lines = trimmed.split('\n');
+        const headers = lines[0].split(',').map(h => h.trim());
+        const data = [];
+        for (let i = 1; i < lines.length; i++) {
+            if (!lines[i].trim()) continue;
+            const row = {};
+            const values = lines[i].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
+            headers.forEach((header, index) => {
+                let value = values[index] || '';
+                if (value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1);
+                if (header === 'ap_country' || header === 'countries' || header === 'business_units') {
+                    value = value.replace(/\[|\]|"/g, '');
+                }
+                row[header] = value.trim();
+            });
+            data.push(row);
+        }
+        return data;
+    }
+
+    function updateDashboard(fullIssuesData, fullApsData) {
+        const selectedPendingFrom = document.getElementById('pendingFromFilterDashboard').value;
+        const selectedType        = document.getElementById('typeFilterDashboard').value;
+        const selectedCountry     = document.getElementById('countryFilterDashboard').value;
+        const selectedBAs         = getSelectValues('businessAreaFilterDashboard');
+
+        const lateApStatuses = ['Pending Approval (late)', 'Pending Validation (late)', 'Late'];
+
+        const allLateIssues  = fullIssuesData.filter(d => d.status === 'Late');
+        const allCriticalAps = fullApsData.filter(d => lateApStatuses.includes(d.ap_status));
+
+        document.getElementById('kpi-late-issues').textContent = allLateIssues.length;
+        document.getElementById('kpi-late-aps').textContent    = allCriticalAps.length;
+
+        const filterLogic = (d, isAp) => {
+            if (selectedPendingFrom && d['Action Pending From'] !== selectedPendingFrom) return false;
+            if (selectedType && d.Type !== selectedType) return false;
+            const countryField = isAp ? 'ap_country' : 'countries';
+            if (selectedCountry && d[countryField] !== selectedCountry) return false;
+            if (selectedBAs.length > 0 && !selectedBAs.includes(d['Business Area'])) return false;
+            return true;
+        };
+
+        const filteredIssues = allLateIssues.filter(d => filterLogic(d, false));
+        const filteredAps    = allCriticalAps.filter(d => filterLogic(d, true));
+
+        document.getElementById('kpi-total-issues').textContent = filteredIssues.length;
+        document.getElementById('kpi-total-aps').textContent    = filteredAps.length;
+
+        createDashboardPivot(filteredIssues, filteredAps);
+    }
+
+    function createDashboardPivot(issuesData, apsData) {
+        const container = document.getElementById('dashboardPivotContainer');
+        const combined  = [];
+
+        issuesData.forEach(d => combined.push({
+            type: d.Type || 'N/A',
+            pendingFrom: d['Action Pending From'] || 'N/A',
+            action: d.Action || 'N/A',
+            kind: 'Issue'
+        }));
+        apsData.forEach(d => combined.push({
+            type: d.Type || 'N/A',
+            pendingFrom: d['Action Pending From'] || 'N/A',
+            action: d.Action || 'N/A',
+            kind: 'AP'
+        }));
+
+        if (!combined.length) {
+            container.innerHTML = "<p class='text-muted mb-0'>No late Issues or critical Action Plans for the selected filters.</p>";
+            return;
+        }
+
+        const pivot = {};
+        combined.forEach(row => {
+            const key = `${row.type}||${row.pendingFrom}||${row.action}`;
+            if (!pivot[key]) {
+                pivot[key] = { type: row.type, pendingFrom: row.pendingFrom, action: row.action, issues: 0, aps: 0, total: 0 };
+            }
+            if (row.kind === 'Issue') pivot[key].issues += 1;
+            if (row.kind === 'AP')    pivot[key].aps    += 1;
+            pivot[key].total += 1;
+        });
+
+        const rows = Object.values(pivot).sort((a, b) => {
+            if (a.type < b.type) return -1; if (a.type > b.type) return 1;
+            if (a.pendingFrom < b.pendingFrom) return -1; if (a.pendingFrom > b.pendingFrom) return 1;
+            if (a.action < b.action) return -1; if (a.action > b.action) return 1;
+            return 0;
+        });
+
+        let html = `
+            <table class="table table-striped table-hover table-sm mb-0">
+                <thead class="thead-dark">
+                    <tr>
+                        <th>TYPE</th>
+                        <th>ACTION PENDING FROM</th>
+                        <th>ACTION</th>
+                        <th>ISSUES</th>
+                        <th>ACTION PLANS</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+        rows.forEach(r => {
+            const rowClass = r.total >= 5 ? ' class="high-total"' : '';
+            html += `
+                <tr${rowClass}>
+                    <td>${escapeHtml(r.type)}</td>
+                    <td>${escapeHtml(r.pendingFrom)}</td>
+                    <td>${escapeHtml(r.action)}</td>
+                    <td>${r.issues}</td>
+                    <td>${r.aps}</td>
+                </tr>`;
+        });
+        html += `</tbody></table>`;
+        container.innerHTML = html;
+    }
+
+    function populateTable(data, tableId, linkColumn, linkUrlColumn, hiddenColumns = [], visibleColumns = null) {
+        if (!data.length) return;
+        const table   = document.getElementById(tableId);
+        const headers = Object.keys(data[0]);
+        const columns = (visibleColumns && visibleColumns.length) ? visibleColumns : headers.filter(h => !hiddenColumns.includes(h));
+
+        let theadHtml = '<tr>';
+        columns.forEach(header => {
+            theadHtml += `<th>${header.replace(/_/g, ' ').toUpperCase()}</th>`;
+        });
+        theadHtml += '</tr>';
+        table.querySelector('thead').innerHTML = theadHtml;
+
+        let tbodyHtml = '';
+        data.forEach(row => {
+            tbodyHtml += '<tr>';
+            columns.forEach(header => {
+                const value = row[header] || '';
+                if (header === 'NP&F+') {
+                    if (value && value !== '-' && value.length > 10) {
+                        const shortText = '...' + value.slice(-10);
+                        tbodyHtml += `<td><a href="${value}" target="_blank" title="${value}">${shortText}</a></td>`;
+                    } else if (value && value !== '-') {
+                        tbodyHtml += `<td><a href="${value}" target="_blank">${value}</a></td>`;
+                    } else {
+                        tbodyHtml += `<td>${value}</td>`;
+                    }
+                } else if (header === linkColumn) {
+                    tbodyHtml += `<td><a href="${row[linkUrlColumn] || '#'}" target="_blank">${escapeHtml(value)}</a></td>`;
+                } else {
+                    tbodyHtml += `<td>${escapeHtml(value)}</td>`;
+                }
+            });
+            tbodyHtml += '</tr>';
+        });
+        table.querySelector('tbody').innerHTML = tbodyHtml;
+    }
+
+    function populateFilterWithOptions(filterId, options) {
+        const filter = document.getElementById(filterId);
+        options.forEach(value => {
+            if (value) {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = value;
+                filter.appendChild(option);
+            }
+        });
+    }
+
+    function populateFilter(data, filterId, columnName) {
+        const uniqueValues = [...new Set(data.map(item => item[columnName]))].filter(Boolean).sort();
+        populateFilterWithOptions(filterId, uniqueValues);
+    }
+
+    function applyTableFilters(tableId, filterConfig) {
+        const table = document.getElementById(tableId);
+        const rows  = table.querySelectorAll('tbody tr');
+
+        const activeFilters = filterConfig.map(config => {
+            let val = null;
+            if (config.type === 'multi') {
+                val = getSelectValues(config.id);
+            } else {
+                val = document.getElementById(config.id).value.trim().toLowerCase();
+            }
+            return { val, colIndex: config.colIndex, type: config.type || 'select' };
+        });
+
+        rows.forEach(row => {
+            let shouldShow = true;
+            const cells    = row.cells;
+            for (const filter of activeFilters) {
+                if (!filter.val || (Array.isArray(filter.val) && filter.val.length === 0)) continue;
+                const cellText = cells[filter.colIndex] ? cells[filter.colIndex].textContent.trim() : '';
+                if (filter.type === 'multi') {
+                    if (!filter.val.includes(cellText)) { shouldShow = false; break; }
+                } else {
+                    if (!cellText.toLowerCase().includes(filter.val)) { shouldShow = false; break; }
+                }
+            }
+            row.style.display = shouldShow ? '' : 'none';
+        });
+
+        let visibleCount = 0;
+        let lateCount    = 0;
+        rows.forEach(row => {
+            if (row.style.display !== 'none') {
+                visibleCount++;
+                const status = row.cells[5] ? row.cells[5].textContent.trim() : '';
+                const lateApStatuses = ['Pending Approval (late)', 'Pending Validation (late)', 'Late'];
+                if (tableId === 'issuesTable' && status === 'Late') lateCount++;
+                else if (tableId === 'apsTable' && lateApStatuses.includes(status)) lateCount++;
+            }
+        });
+
+        if (tableId === 'issuesTable') {
+            document.getElementById('kpi-issues-total').textContent = visibleCount;
+            document.getElementById('kpi-issues-late').textContent  = lateCount;
+        } else if (tableId === 'apsTable') {
+            document.getElementById('kpi-aps-total').textContent = visibleCount;
+            document.getElementById('kpi-aps-late').textContent  = lateCount;
+        }
+    }
+
+    function exportTableToCSV(tableId, filename) {
+        let csv  = [];
+        const table = document.getElementById(tableId);
+        const rows  = table.querySelectorAll('tr');
+        for (const row of rows) {
+            if (row.style.display === 'none') continue;
+            const cols    = row.querySelectorAll('td, th');
+            const rowData = [];
+            for (const col of cols) {
+                let data = col.innerText.replace(/"/g, '""');
+                if (data.includes(',')) data = `"${data}"`;
+                rowData.push(data);
+            }
+            csv.push(rowData.join(','));
+        }
+        const csvFile     = new Blob([csv.join('\n')], { type: 'text/csv' });
+        const downloadLink = document.createElement('a');
+        downloadLink.download = filename;
+        downloadLink.href = window.URL.createObjectURL(csvFile);
+        downloadLink.style.display = 'none';
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        return text
+            .replace(/&/g,  '&amp;')
+            .replace(/</g,  '&lt;')
+            .replace(/>/g,  '&gt;')
+            .replace(/"/g,  '&quot;')
+            .replace(/'/g,  '&#039;');
+    }
+</script>
+
+</body>
+</html>
