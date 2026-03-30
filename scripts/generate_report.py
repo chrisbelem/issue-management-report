@@ -696,8 +696,9 @@ def send_to_slack(html_path, generated_at):
     with open(html_path, 'rb') as f:
         file_bytes = f.read()
 
-    # Passo 1: obter URL de upload
-    payload1 = json.dumps({
+    # Passo 1: obter URL de upload (form-encoded)
+    import urllib.parse
+    payload1 = urllib.parse.urlencode({
         'filename': filename,
         'length':   len(file_bytes),
     }).encode()
@@ -706,7 +707,7 @@ def send_to_slack(html_path, generated_at):
         data=payload1, method='POST',
     )
     req1.add_header('Authorization', f'Bearer {token}')
-    req1.add_header('Content-Type', 'application/json')
+    req1.add_header('Content-Type', 'application/x-www-form-urlencoded')
     with urllib.request.urlopen(req1, timeout=30) as r:
         resp1 = json.loads(r.read())
     if not resp1.get('ok'):
@@ -722,12 +723,8 @@ def send_to_slack(html_path, generated_at):
     with urllib.request.urlopen(req2, timeout=60) as r:
         pass  # resposta 200 OK sem corpo
 
-    # Passo 3: completar upload e compartilhar no canal
-    payload3 = json.dumps({
-        'files':           [{'id': file_id}],
-        'channel_id':      channel,
-        'initial_comment': f':bar_chart: Issue Management Dashboard — {generated_at}',
-    }).encode()
+    # Passo 3: completar upload (sem canal — obtém permalink)
+    payload3 = json.dumps({'files': [{'id': file_id}]}).encode()
     req3 = urllib.request.Request(
         'https://slack.com/api/files.completeUploadExternal',
         data=payload3, method='POST',
@@ -736,10 +733,29 @@ def send_to_slack(html_path, generated_at):
     req3.add_header('Content-Type', 'application/json')
     with urllib.request.urlopen(req3, timeout=30) as r:
         resp3 = json.loads(r.read())
-    if resp3.get('ok'):
+    if not resp3.get('ok'):
+        print(f'  ERRO Slack completeUpload: {resp3.get("error")}')
+        return
+
+    permalink = resp3['files'][0].get('permalink', '')
+
+    # Passo 4: posta link no canal
+    payload4 = json.dumps({
+        'channel': channel,
+        'text': f':bar_chart: *Issue Management Dashboard* — {generated_at}\n{permalink}',
+    }).encode()
+    req4 = urllib.request.Request(
+        'https://slack.com/api/chat.postMessage',
+        data=payload4, method='POST',
+    )
+    req4.add_header('Authorization', f'Bearer {token}')
+    req4.add_header('Content-Type', 'application/json')
+    with urllib.request.urlopen(req4, timeout=15) as r:
+        resp4 = json.loads(r.read())
+    if resp4.get('ok'):
         print(f'  ✓ Dashboard enviado para o Slack (canal {channel})')
     else:
-        print(f'  ERRO Slack completeUpload: {resp3.get("error")}')
+        print(f'  ERRO Slack postMessage: {resp4.get("error")}')
 
 if __name__ == '__main__':
     run()
