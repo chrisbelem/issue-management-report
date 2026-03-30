@@ -630,25 +630,13 @@ def run():
     print(f'  open {output_path}')
 
 def _write_apps_script(html):
-    """Gera apps_script/Code.gs com o HTML embutido para deploy no Apps Script."""
+    """Copia o HTML gerado para apps_script/index.html para deploy no Apps Script."""
     apps_dir = os.path.join(BASE_DIR, 'apps_script')
     os.makedirs(apps_dir, exist_ok=True)
-    # Escapa caracteres especiais para template literal JS
-    html_escaped = html.replace('\\', '\\\\').replace('`', '\\`').replace('${', '\\${')
-    script = (
-        "// Auto-gerado por generate_report.py — não editar manualmente\n"
-        "function doGet(e) {\n"
-        "  var html = HtmlService.createHtmlOutput(`" + html_escaped + "`);\n"
-        "  html.setTitle('Issues & Action Plans — Global Lending');\n"
-        "  html.addMetaTag('viewport', 'width=device-width, initial-scale=1');\n"
-        "  html.setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);\n"
-        "  return html;\n"
-        "}\n"
-    )
-    code_path = os.path.join(apps_dir, 'Code.gs')
-    with open(code_path, 'w', encoding='utf-8') as f:
-        f.write(script)
-    print(f'  Code.gs gerado: {len(script.encode()) // 1024} KB')
+    index_path = os.path.join(apps_dir, 'index.html')
+    with open(index_path, 'w', encoding='utf-8') as f:
+        f.write(html)
+    print(f'  apps_script/index.html atualizado: {len(html.encode()) // 1024} KB')
 
 if __name__ == '__main__':
     run()
