@@ -35,7 +35,7 @@ from datetime import datetime, date
 BASE_DIR     = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG_DIR   = os.path.join(BASE_DIR, 'data', 'config')
 TEMPLATE_DIR = os.path.join(BASE_DIR, 'template')
-OUTPUT_DIR   = os.path.join(BASE_DIR, 'output')
+OUTPUT_DIR   = os.path.join(BASE_DIR, 'docs')       # GitHub Pages serve de /docs
 ENV_PATH     = os.path.join(BASE_DIR, '.env')
 
 # ─── Configurações editáveis ───────────────────────────────────────────────────
@@ -616,7 +616,7 @@ def run():
     html = html.replace('%%GENERATED_AT%%', datetime.now().strftime('%Y-%m-%d %H:%M'))
 
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    output_path = os.path.join(OUTPUT_DIR, 'dashboard.html')
+    output_path = os.path.join(OUTPUT_DIR, 'index.html')
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(html)
 
