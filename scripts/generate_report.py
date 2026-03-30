@@ -460,6 +460,10 @@ def run():
     print('[generate_report] Buscando Action Plans no Databricks...')
     ap_rows = db_run_query(QUERY_APS)
 
+    # Filtra APs com status terminal antes de indexar
+    TERMINAL_AP_STATUSES = {'Cancelled', 'Done', 'Completed'}
+    ap_rows = [r for r in ap_rows if safe(r.get('ap_status', '')) not in TERMINAL_AP_STATUSES]
+
     ap_index = build_ap_index(ap_rows)
 
     # ── 3. Auto-enriquecer mapeamento de pessoas via org structure ────────────
@@ -478,8 +482,15 @@ def run():
         'business_units', 'Action', 'Action Owner', 'Action Pending From', 'Business Area',
     ]
 
+    TERMINAL_ISSUE_STATUSES = {'Risk Accepted', 'Cancelled', 'Done', 'Completed'}
+
     issues_output = []
     for row in issues_rows:
+        # Exclui issues com status terminal
+        issue_status = safe(row.get('status', ''))
+        if issue_status in TERMINAL_ISSUE_STATUSES:
+            continue
+
         code = safe(row.get('code', ''))
 
         # Type + NP&F+ (usando npf_keys direto da tabela)
@@ -491,23 +502,28 @@ def run():
             issue_type = 'Issue'
             npf_link   = '-'
 
-        # AP mais urgente
-        ap_list = ap_index.get(code, [])
-        if ap_list:
-            best      = best_ap(ap_list)
-            ap_status   = safe(best.get('ap_status', ''))
-            ap_assignee = safe(best.get('ap_assignee_name', ''))
-            ap_due      = safe(best.get('ap_due_date_at', ''))
+        # Issue status TBD → Create AP direto, sem olhar APs
+        if issue_status == 'TBD':
+            action       = 'Create AP'
+            action_owner = safe(row.get('responsible_name', ''))
         else:
-            ap_status, ap_assignee, ap_due = '', '', ''
+            # AP mais urgente
+            ap_list = ap_index.get(code, [])
+            if ap_list:
+                best        = best_ap(ap_list)
+                ap_status   = safe(best.get('ap_status', ''))
+                ap_assignee = safe(best.get('ap_assignee_name', ''))
+                ap_due      = safe(best.get('ap_due_date_at', ''))
+            else:
+                ap_status, ap_assignee, ap_due = '', '', ''
 
-        action, action_owner = compute_action_issue(
-            ap_status, ap_due, ap_assignee,
-            safe(row.get('origin', '')),
-            safe(row.get('responsible_name', '')),
-            safe(row.get('reporter_name', '')),
-            today,
-        )
+            action, action_owner = compute_action_issue(
+                ap_status, ap_due, ap_assignee,
+                safe(row.get('origin', '')),
+                safe(row.get('responsible_name', '')),
+                safe(row.get('reporter_name', '')),
+                today,
+            )
 
         primary_owner = first_name_from_list(action_owner) or action_owner
         bu, ba = lookup_person(primary_owner, people_map)
@@ -537,7 +553,7 @@ def run():
     issues_by_code = {safe(r.get('code', '')): r for r in issues_rows}
 
     aps_output = []
-    for row in ap_rows:
+    for row in ap_rows:  # ap_rows já foi filtrado acima (sem Cancelled/Done)
         issue_link = safe(row.get('issue_link_projac', ''))
         issue_code = issue_link[-7:] if len(issue_link) >= 7 else issue_link.split('/')[-1]
 
