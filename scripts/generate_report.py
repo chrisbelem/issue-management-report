@@ -74,9 +74,6 @@ SELECT
 FROM ist__dataset.projac_issues i
 LEFT JOIN etl.ist__contract.malhacao__process_journey_macroprocesses macroprocess
   ON i.macroprocess_id = macroprocess.process_journey_macroprocess__id
-WHERE
-  macroprocess.process_journey_macroprocess__name IN ('Global Lending', 'Secured Loans', 'Lending')
-  OR array_contains(i.business_units, 'Global Lending')
 """.format(projac_base=PROJAC_BASE_URL)
 
 QUERY_APS = """
@@ -113,12 +110,17 @@ SELECT
   b.due_date_at   AS ap_due_date_at,
   c.last_status   AS ap_last_status,
   b.business_unit AS ap_business_unit,
-  b.assignee_names AS ap_assignee_name
+  b.assignee_names AS ap_assignee_name,
+  a.code          AS issue_code_raw,
+  a.origin        AS issue_origin,
+  a.reporter_name AS issue_reporter_name,
+  a.overall_risk_rating AS issue_risk_rating,
+  a.npf_keys      AS issue_npf_keys_raw
 FROM ist__dataset.projac_issues a
 LEFT JOIN ist__dataset.projac_action_plans b
   ON (a.key = b.issue_key OR a.id = b.issue_id)
 LEFT JOIN latest_action_plan_status c ON b.code = c.key
-WHERE b.business_unit IN ('Global Lending', 'Secured Loans')
+WHERE b.code IS NOT NULL
 """.format(projac_base=PROJAC_BASE_URL)
 
 # ─── Carregar .env ─────────────────────────────────────────────────────────────
@@ -484,11 +486,20 @@ def run():
 
     TERMINAL_ISSUE_STATUSES = {'Risk Accepted', 'Cancelled', 'Done', 'Completed'}
 
+    # Filtro Global Lending aplicado em Python (queries trazem todas as BUs)
+    GL_MACROPROCESSES = {'Global Lending', 'Secured Loans', 'Lending'}
+
     issues_output = []
     for row in issues_rows:
         # Exclui issues com status terminal
         issue_status = safe(row.get('status', ''))
         if issue_status in TERMINAL_ISSUE_STATUSES:
+            continue
+
+        # Filtra para Global Lending
+        macroprocess    = safe(row.get('process_journey_macroprocess__name', ''))
+        business_units  = safe(row.get('business_units', ''))
+        if macroprocess not in GL_MACROPROCESSES and 'Global Lending' not in business_units:
             continue
 
         code = safe(row.get('code', ''))
@@ -502,10 +513,25 @@ def run():
             issue_type = 'Issue'
             npf_link   = '-'
 
-        # Issue status TBD → Create AP direto, sem olhar APs
+        origin   = safe(row.get('origin', ''))
+        reporter = safe(row.get('reporter_name', ''))
+
+        # Prioridade: status do issue determina a ação antes de consultar APs
         if issue_status == 'TBD':
             action       = 'Create AP'
             action_owner = safe(row.get('responsible_name', ''))
+        elif issue_status in ('In Validation', 'Pending Validation', 'Pending Validation (late)'):
+            action = 'Complete AP Pending Validation'
+            if origin == 'Self-Identified':
+                action_owner = get_bco_name()
+            else:
+                action_owner = reporter
+        elif issue_status in ('Pending Approval', 'Pending Approval (late)'):
+            action = 'Complete AP Pending Approval'
+            if origin == 'Self-Identified':
+                action_owner = get_bco_name()
+            else:
+                action_owner = reporter
         else:
             # AP mais urgente
             ap_list = ap_index.get(code, [])
@@ -519,9 +545,9 @@ def run():
 
             action, action_owner = compute_action_issue(
                 ap_status, ap_due, ap_assignee,
-                safe(row.get('origin', '')),
+                origin,
                 safe(row.get('responsible_name', '')),
-                safe(row.get('reporter_name', '')),
+                reporter,
                 today,
             )
 
@@ -552,20 +578,36 @@ def run():
 
     issues_by_code = {safe(r.get('code', '')): r for r in issues_rows}
 
+    # BUs de Global Lending para filtro de APs
+    GL_AP_BUS = {'Global Lending', 'Secured Loans'}
+
     aps_output = []
     for row in ap_rows:  # ap_rows já foi filtrado acima (sem Cancelled/Done)
+        # Filtra para Global Lending
+        ap_bu = safe(row.get('ap_business_unit', ''))
+        if ap_bu not in GL_AP_BUS:
+            continue
+
         issue_link = safe(row.get('issue_link_projac', ''))
         issue_code = issue_link[-7:] if len(issue_link) >= 7 else issue_link.split('/')[-1]
 
-        parent       = issues_by_code.get(issue_code, {})
-        issue_origin = safe(parent.get('origin', ''))
-        issue_reporter = safe(parent.get('reporter_name', ''))
-        issue_rating   = safe(parent.get('overall_risk_rating', ''))
+        # Usa campos do issue direto da query (resolve o problema de issues em outras BUs)
+        issue_origin   = safe(row.get('issue_origin', ''))
+        issue_reporter = safe(row.get('issue_reporter_name', ''))
+        issue_rating   = safe(row.get('issue_risk_rating', ''))
+        issue_code_raw = safe(row.get('issue_code_raw', ''))
 
-        npf_key    = parse_npf_keys(parent.get('npf_keys', ''))
+        # Fallback para issues_by_code se campos vieram vazios
+        if not issue_origin or not issue_reporter:
+            parent = issues_by_code.get(issue_code_raw or issue_code, {})
+            issue_origin   = issue_origin   or safe(parent.get('origin', ''))
+            issue_reporter = issue_reporter or safe(parent.get('reporter_name', ''))
+            issue_rating   = issue_rating   or safe(parent.get('overall_risk_rating', ''))
+
+        npf_key    = parse_npf_keys(row.get('issue_npf_keys_raw', ''))
         issue_type = 'Potential Issue' if npf_key else 'Issue'
 
-        issue_code_col = f"I{issue_link[-6:]}" if issue_link else issue_code
+        issue_code_col = issue_code_raw or (f"I{issue_link[-6:]}" if issue_link else issue_code)
 
         ap_status   = safe(row.get('ap_status', ''))
         ap_assignee = safe(row.get('ap_assignee_name', ''))
@@ -620,8 +662,12 @@ def run():
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(html)
 
-    # Gera apps_script/Code.gs para deploy no Google Apps Script
+    # Gera apps_script/index.html para deploy no Google Apps Script
     _write_apps_script(html)
+
+    # Envia para o Slack
+    generated_at_str = datetime.now().strftime('%Y-%m-%d %H:%M')
+    send_to_slack(output_path, generated_at_str)
 
     print(f'\n✓ Dashboard gerado: {output_path}')
     print(f'  Issues processados : {len(issues_output)}')
@@ -637,6 +683,63 @@ def _write_apps_script(html):
     with open(index_path, 'w', encoding='utf-8') as f:
         f.write(html)
     print(f'  apps_script/index.html atualizado: {len(html.encode()) // 1024} KB')
+
+def send_to_slack(html_path, generated_at):
+    """Envia o dashboard HTML para o canal Slack configurado."""
+    token   = os.environ.get('SLACK_TOKEN', '')
+    channel = os.environ.get('SLACK_CHANNEL', '')
+    if not token or not channel:
+        print('  AVISO: SLACK_TOKEN ou SLACK_CHANNEL não configurados. Pulando envio.')
+        return
+
+    filename = os.path.basename(html_path)
+    with open(html_path, 'rb') as f:
+        file_bytes = f.read()
+
+    # Passo 1: obter URL de upload
+    payload1 = json.dumps({
+        'filename': filename,
+        'length':   len(file_bytes),
+    }).encode()
+    req1 = urllib.request.Request(
+        'https://slack.com/api/files.getUploadURLExternal',
+        data=payload1, method='POST',
+    )
+    req1.add_header('Authorization', f'Bearer {token}')
+    req1.add_header('Content-Type', 'application/json')
+    with urllib.request.urlopen(req1, timeout=30) as r:
+        resp1 = json.loads(r.read())
+    if not resp1.get('ok'):
+        print(f'  ERRO Slack getUploadURL: {resp1.get("error")}')
+        return
+
+    upload_url = resp1['upload_url']
+    file_id    = resp1['file_id']
+
+    # Passo 2: enviar conteúdo do arquivo
+    req2 = urllib.request.Request(upload_url, data=file_bytes, method='POST')
+    req2.add_header('Content-Type', 'text/html')
+    with urllib.request.urlopen(req2, timeout=60) as r:
+        pass  # resposta 200 OK sem corpo
+
+    # Passo 3: completar upload e compartilhar no canal
+    payload3 = json.dumps({
+        'files':           [{'id': file_id}],
+        'channel_id':      channel,
+        'initial_comment': f':bar_chart: Issue Management Dashboard — {generated_at}',
+    }).encode()
+    req3 = urllib.request.Request(
+        'https://slack.com/api/files.completeUploadExternal',
+        data=payload3, method='POST',
+    )
+    req3.add_header('Authorization', f'Bearer {token}')
+    req3.add_header('Content-Type', 'application/json')
+    with urllib.request.urlopen(req3, timeout=30) as r:
+        resp3 = json.loads(r.read())
+    if resp3.get('ok'):
+        print(f'  ✓ Dashboard enviado para o Slack (canal {channel})')
+    else:
+        print(f'  ERRO Slack completeUpload: {resp3.get("error")}')
 
 if __name__ == '__main__':
     run()
