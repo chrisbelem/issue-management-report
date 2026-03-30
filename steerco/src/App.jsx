@@ -1,10 +1,7 @@
 import { useState, useEffect } from 'react'
 import Header from './components/Header'
-import KPICards from './components/KPICards'
-import LateIssues from './components/LateIssues'
-import CriticalAPs from './components/CriticalAPs'
-import MORKPIs from './components/MORKPIs'
-import AISummary from './components/AISummary'
+import OverviewTab from './components/OverviewTab'
+import DetailsTab from './components/DetailsTab'
 
 function parseCSV(text) {
   if (!text?.trim()) return []
@@ -22,79 +19,64 @@ function parseCSV(text) {
   })
 }
 
+const TAB_STYLE = (active) => ({
+  padding: '10px 24px',
+  fontSize: 14,
+  fontWeight: 600,
+  cursor: 'pointer',
+  border: 'none',
+  background: 'none',
+  borderBottom: active ? '3px solid #8A05BE' : '3px solid transparent',
+  color: active ? '#8A05BE' : '#6B6B80',
+  transition: 'all 0.15s',
+})
+
 export default function App() {
   const [data, setData] = useState(null)
+  const [tab, setTab] = useState('overview')
 
   useEffect(() => {
     fetch(import.meta.env.BASE_URL + 'data.json')
       .then(r => r.json())
       .then(setData)
-      .catch(() => {
-        // fallback: try to parse from embedded CSV (for local dev)
-        setData({ error: 'data.json not found — run generate_report.py first' })
-      })
+      .catch(() => setData({ error: 'data.json not found — run generate_report.py first' }))
   }, [])
 
   if (!data) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh' }}>
       <div style={{ textAlign:'center' }}>
-        <div style={{ width:48, height:48, border:'3px solid #8A05BE', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.8s linear infinite', margin:'0 auto 16px' }} />
-        <p style={{ color:'#888899' }}>Loading dashboard…</p>
+        <div style={{ width:40, height:40, border:'3px solid #8A05BE', borderTopColor:'transparent', borderRadius:'50%', animation:'spin 0.8s linear infinite', margin:'0 auto 12px' }} />
+        <p style={{ color:'#6B6B80', fontSize:14 }}>Loading…</p>
       </div>
-      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   )
 
   if (data.error) return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', color:'#FF4455' }}>
-      {data.error}
-    </div>
+    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', color:'#E0002A' }}>{data.error}</div>
   )
 
   const issues = parseCSV(data.issues_csv)
   const aps    = parseCSV(data.aps_csv)
 
-  const lateStatuses    = new Set(['Late', 'Pending Approval (late)', 'Pending Validation (late)'])
-  const lateIssues      = issues.filter(i => i.status === 'Late')
-  const lateAPs         = aps.filter(a => a.ap_status === 'Late')
-  const pendingValLate  = aps.filter(a => a.ap_status === 'Pending Validation (late)')
-  const pendingApprLate = aps.filter(a => a.ap_status === 'Pending Approval (late)')
-  const pendingVal      = aps.filter(a => a.ap_status === 'Pending Validation')
-  const pendingAppr     = aps.filter(a => a.ap_status === 'Pending Approval')
-
   return (
-    <div style={{ maxWidth: 1280, margin: '0 auto', padding: '0 24px 64px' }}>
+    <div style={{ maxWidth:1280, margin:'0 auto', padding:'0 24px 64px' }}>
       <Header generatedAt={data.generated_at} />
 
-      <KPICards
-        totalIssues={issues.length}
-        lateIssues={lateIssues.length}
-        totalAPs={aps.length}
-        lateAPs={lateAPs.length}
-        pendingLate={pendingValLate.length + pendingApprLate.length}
-      />
+      {/* Tabs */}
+      <div style={{ borderBottom:'1px solid rgba(0,0,0,0.08)', marginBottom:32, display:'flex', gap:4 }}>
+        <button style={TAB_STYLE(tab==='overview')} onClick={() => setTab('overview')}>
+          📊 Dashboard
+        </button>
+        <button style={TAB_STYLE(tab==='details')} onClick={() => setTab('details')}>
+          📋 Detalhes
+        </button>
+      </div>
 
-      <LateIssues issues={lateIssues} />
-
-      <CriticalAPs
-        lateAPs={lateAPs}
-        pendingValLate={pendingValLate}
-        pendingApprLate={pendingApprLate}
-        pendingVal={pendingVal}
-        pendingAppr={pendingAppr}
-      />
-
-      <MORKPIs issues={issues} aps={aps} />
-
-      <AISummary
-        issues={issues}
-        aps={aps}
-        lateIssues={lateIssues}
-        lateAPs={lateAPs}
-        pendingValLate={pendingValLate}
-        pendingApprLate={pendingApprLate}
-        generatedAt={data.generated_at}
-      />
+      {tab === 'overview'
+        ? <OverviewTab issues={issues} aps={aps} />
+        : <DetailsTab  issues={issues} aps={aps} generatedAt={data.generated_at} />
+      }
     </div>
   )
 }
