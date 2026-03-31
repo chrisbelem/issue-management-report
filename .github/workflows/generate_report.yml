@@ -1,9 +1,9 @@
 name: Generate Issue Management Report
 
 on:
-  # Roda toda segunda-feira às 8h (horário de Brasília = 11h UTC)
+  # Roda todos os dias úteis às 8h (horário de Brasília = 11h UTC)
   schedule:
-    - cron: '0 11 * * 1'
+    - cron: '0 11 * * 1-5'
 
   # Permite rodar manualmente pela interface do GitHub
   workflow_dispatch:
