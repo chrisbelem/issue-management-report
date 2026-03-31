@@ -31,11 +31,20 @@ function APCard({ ap }) {
       </div>
       <div style={{ flex: 1, minWidth: 160 }}>
         <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 6, color: '#1A1A2E' }}>{ap.ap_summary}</div>
-        <span style={{
-          background: meta.color + '15', color: meta.color,
-          border: `1px solid ${meta.color}44`,
-          borderRadius: 6, padding: '1px 8px', fontSize: 11, fontWeight: 600,
-        }}>{meta.icon} {meta.label}</span>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{
+            background: meta.color + '15', color: meta.color,
+            border: `1px solid ${meta.color}44`,
+            borderRadius: 6, padding: '1px 8px', fontSize: 11, fontWeight: 600,
+          }}>{meta.icon} {meta.label}</span>
+          {ap['Business Area'] && (
+            <span style={{
+              background: '#1A6FCC15', color: '#1A6FCC',
+              border: '1px solid #1A6FCC44',
+              borderRadius: 6, padding: '1px 8px', fontSize: 11, fontWeight: 600,
+            }}>{ap['Business Area']}</span>
+          )}
+        </div>
       </div>
       <div style={{ textAlign: 'right', minWidth: 110 }}>
         <div style={{ fontSize: 11, color: '#6B6B80' }}>Action Owner</div>

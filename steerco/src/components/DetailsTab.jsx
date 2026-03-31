@@ -1,10 +1,10 @@
-import LateIssues  from './LateIssues'
+import LateIssues, { LatePotentialIssues } from './LateIssues'
 import CriticalAPs from './CriticalAPs'
 import MORKPIs     from './MORKPIs'
-import AISummary   from './AISummary'
 
-export default function DetailsTab({ issues, aps, generatedAt }) {
-  const lateIssues      = issues.filter(i => i.status === 'Late')
+export default function DetailsTab({ issues, aps, ttr }) {
+  const lateIssues      = issues.filter(i => i.status === 'Late' && i.Type === 'Issue')
+  const latePotential   = issues.filter(i => i.status === 'Late' && i.Type === 'Potential Issue')
   const lateAPs         = aps.filter(a => a.ap_status === 'Late')
   const pendingValLate  = aps.filter(a => a.ap_status === 'Pending Validation (late)')
   const pendingApprLate = aps.filter(a => a.ap_status === 'Pending Approval (late)')
@@ -14,6 +14,7 @@ export default function DetailsTab({ issues, aps, generatedAt }) {
   return (
     <div>
       <LateIssues issues={lateIssues} />
+      <LatePotentialIssues issues={latePotential} />
       <CriticalAPs
         lateAPs={lateAPs}
         pendingValLate={pendingValLate}
@@ -21,13 +22,7 @@ export default function DetailsTab({ issues, aps, generatedAt }) {
         pendingVal={pendingVal}
         pendingAppr={pendingAppr}
       />
-      <MORKPIs issues={issues} aps={aps} />
-      <AISummary
-        issues={issues} aps={aps}
-        lateIssues={lateIssues} lateAPs={lateAPs}
-        pendingValLate={pendingValLate} pendingApprLate={pendingApprLate}
-        generatedAt={generatedAt}
-      />
+      <MORKPIs issues={issues} aps={aps} ttr={ttr} />
     </div>
   )
 }

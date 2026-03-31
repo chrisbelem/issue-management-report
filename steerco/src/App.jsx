@@ -75,7 +75,7 @@ export default function App() {
 
       {tab === 'overview'
         ? <OverviewTab issues={issues} aps={aps} />
-        : <DetailsTab  issues={issues} aps={aps} generatedAt={data.generated_at} />
+        : <DetailsTab  issues={issues} aps={aps} ttr={data.ttr} />
       }
     </div>
   )

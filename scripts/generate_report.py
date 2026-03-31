@@ -276,24 +276,23 @@ def read_people_mapping():
 
 def enrich_people_map_from_org(people_map, issues_rows, ap_rows):
     """
-    Para nomes não encontrados em people_map, tenta buscar BU/BA automaticamente
-    no Databricks (productivity_nu_employee_with_org_structure) usando o e-mail
-    mapeado via projac_issues. Atualiza people_map in-place.
+    Busca Business Area (level 6) e BU para TODOS os funcionários ativos do Mantiqueira.
+    Constrói mapeamento por email e por unique_name para cobrir 100% dos assignees
+    de issues e APs, independente de BU. Atualiza people_map in-place.
     """
-    # 1. Coleta name→email das issues (responsible + accountable)
+    # 1. Coleta todos os nomes que aparecem no dado (issues + APs)
+    all_names = set()
     name_to_email = {}
     for row in issues_rows:
         for nk, ek in (('responsible_name', 'responsible_email'),
                        ('accountable_name', 'accountable_email')):
             n = safe(row.get(nk, ''))
             e = safe(row.get(ek, ''))
-            if n and e:
-                name_to_email[n.lower()] = e
-
-    # 2. Todos os nomes que aparecem como dono de ação
-    all_names = set()
-    for row in issues_rows:
-        for f in ('responsible_name', 'accountable_name', 'reporter_name'):
+            if n:
+                all_names.add(n)
+                if e:
+                    name_to_email[n.lower()] = e
+        for f in ('reporter_name',):
             n = safe(row.get(f, ''))
             if n:
                 all_names.add(n)
@@ -303,40 +302,66 @@ def enrich_people_map_from_org(people_map, issues_rows, ap_rows):
             if n:
                 all_names.add(n)
 
-    # 3. Filtra quem ainda não tem mapeamento e tem e-mail conhecido
-    missing_with_email = {}
-    for name in all_names:
-        if name.lower() not in people_map:
-            email = name_to_email.get(name.lower(), '')
-            if email:
-                missing_with_email[email] = name
-
-    if not missing_with_email:
+    missing_names = {n for n in all_names if n.lower() not in people_map}
+    if not missing_names:
         return
 
-    print(f'[generate_report] Buscando BU/BA de {len(missing_with_email)} pessoas no org structure...')
-    emails_sql = ', '.join(f"'{e}'" for e in missing_with_email.keys())
+    # 2. Busca org_level_6 de TODOS os funcionários ativos do Mantiqueira de uma vez
+    #    (não filtra por email — cobre assignees de qualquer BU)
+    print(f'[generate_report] Buscando Business Area (Mantiqueira level 6) para {len(missing_names)} pessoas...')
     try:
         org_rows = db_run_query(
-            f"SELECT ident__email, business_unit_name, business_area_name "
-            f"FROM ist__dataset.productivity_nu_employee_with_org_structure "
-            f"WHERE ident__email IN ({emails_sql})"
+            """
+            SELECT i.ident__email,
+                   i.ident__unique_name,
+                   o.org_level_6  AS business_area_name,
+                   o.org_level_5  AS business_unit_name
+            FROM etl.ist__contract.mantiqueira__idents i
+            JOIN etl.br__series_contract.mantiqueira_group_org_chart_levels o
+              ON array_contains(o.group__members, i.ident__id)
+             AND o.reference_date = (
+                   SELECT MAX(reference_date)
+                   FROM etl.br__series_contract.mantiqueira_group_org_chart_levels
+                 )
+            WHERE i.ident__status = 'ident_status__active'
+              AND i.ident__type   = 'ident_type__employee'
+              AND o.org_level_6   IS NOT NULL
+            """
         )
     except Exception as e:
-        print(f'  AVISO: falha ao buscar org structure: {e}')
+        print(f'  AVISO: falha ao buscar Mantiqueira: {e}')
         return
 
-    found = 0
+    # 3. Constrói lookup por email e por unique_name (ex: "jessica.paul")
+    email_to_org    = {}
+    uname_to_org    = {}
     for row in org_rows:
         email = safe(row.get('ident__email', ''))
+        uname = safe(row.get('ident__unique_name', ''))
         bu    = safe(row.get('business_unit_name', '')) or 'TBD'
         ba    = safe(row.get('business_area_name', '')) or 'TBD'
-        name  = missing_with_email.get(email, '')
-        if name:
-            people_map[name.lower()] = {'bu': bu, 'ba': ba}
+        if email:
+            email_to_org[email.lower()] = {'bu': bu, 'ba': ba}
+        if uname:
+            uname_to_org[uname.lower()] = {'bu': bu, 'ba': ba}
+
+    # 4. Para cada nome faltante, tenta email direto → unique_name derivado → fallback
+    found = 0
+    for name in missing_names:
+        org = None
+        # Tenta pelo email já conhecido
+        email = name_to_email.get(name.lower(), '')
+        if email:
+            org = email_to_org.get(email.lower())
+        # Tenta derivar unique_name a partir do display_name ("Jessica Paul" → "jessica.paul")
+        if not org:
+            derived = name.lower().replace(' ', '.')
+            org = uname_to_org.get(derived)
+        if org:
+            people_map[name.lower()] = org
             found += 1
 
-    print(f'  -> {found} pessoas enriquecidas automaticamente via org structure')
+    print(f'  -> {found}/{len(missing_names)} pessoas enriquecidas via Mantiqueira (org_level_6)')
 
 # ─── Lógica de AP ─────────────────────────────────────────────────────────────
 
@@ -437,6 +462,66 @@ def compute_action_ap(ap_status, issue_origin, issue_reporter,
 
     return '-', '-'
 
+# ─── TTR ──────────────────────────────────────────────────────────────────────
+
+def compute_ttr(issues_rows):
+    """
+    Calcula Time to Remediate para issues fechadas (Done/Completed) dos últimos
+    6 meses com rating High ou Very High, para Global Lending.
+    Retorna dict com avg_days_high, avg_days_very_high e monthly breakdown.
+    """
+    from datetime import date as _date, timedelta as _td
+    CLOSED = {'Done', 'Completed'}
+    HVH    = {'High', 'Very High'}
+    GL_MACROPROCESSES = {'Global Lending', 'Secured Loans', 'Lending'}
+    cutoff = _date.today() - _td(days=183)  # ~6 meses
+
+    records = []
+    for row in issues_rows:
+        status  = safe(row.get('status', ''))
+        rating  = safe(row.get('overall_risk_rating', ''))
+        if status not in CLOSED or rating not in HVH:
+            continue
+        macroprocess   = safe(row.get('process_journey_macroprocess__name', ''))
+        business_units = safe(row.get('business_units', ''))
+        if macroprocess not in GL_MACROPROCESSES and 'Global Lending' not in business_units:
+            continue
+        try:
+            completed = _date.fromisoformat(str(row.get('completed_at', ''))[:10])
+            created   = _date.fromisoformat(str(row.get('created_at', ''))[:10])
+        except (ValueError, TypeError):
+            continue
+        if completed < cutoff:
+            continue
+        days = (completed - created).days
+        month = completed.strftime('%Y-%m')
+        records.append({'rating': rating, 'days': days, 'month': month})
+
+    if not records:
+        return {'avg_high': None, 'avg_very_high': None, 'monthly': []}
+
+    high_days = [r['days'] for r in records if r['rating'] == 'High']
+    vh_days   = [r['days'] for r in records if r['rating'] == 'Very High']
+
+    # Breakdown mensal: avg TTR por mês (H e VH combinados)
+    from collections import defaultdict
+    monthly = defaultdict(list)
+    for r in records:
+        monthly[r['month']].append(r['days'])
+    monthly_list = sorted(
+        [{'month': m, 'avg_days': round(sum(v)/len(v), 1), 'count': len(v)}
+         for m, v in monthly.items()],
+        key=lambda x: x['month']
+    )
+
+    return {
+        'avg_high':      round(sum(high_days)/len(high_days), 1) if high_days else None,
+        'count_high':    len(high_days),
+        'avg_very_high': round(sum(vh_days)/len(vh_days), 1) if vh_days else None,
+        'count_very_high': len(vh_days),
+        'monthly':       monthly_list,
+    }
+
 # ─── Pipeline principal ────────────────────────────────────────────────────────
 
 def run():
@@ -470,6 +555,9 @@ def run():
 
     # ── 3. Auto-enriquecer mapeamento de pessoas via org structure ────────────
     enrich_people_map_from_org(people_map, issues_rows, ap_rows)
+
+    # ── 3b. Calcular TTR (Time to Remediate) para issues fechadas H/VH ──────────
+    ttr_data = compute_ttr(issues_rows)
 
     # ── 4. Enriquecer Issues ──────────────────────────────────────────────────
     print('[generate_report] Enriquecendo Issues...')
@@ -639,11 +727,20 @@ def run():
             print(f'  -> {p}')
         print(f'  Adicione em: data/config/people_mapping.csv\n')
 
-    # ── 7. Gerar strings CSV ───────────────────────────────────────────────────
+    # ── 7. Excluir itens sem Business Area resolvida ───────────────────────────
+    before_i = len(issues_output)
+    before_a = len(aps_output)
+    issues_output = [r for r in issues_output if r.get('Business Area', 'TBD') != 'TBD']
+    aps_output    = [r for r in aps_output    if r.get('Business Area', 'TBD') != 'TBD']
+    if before_i - len(issues_output) or before_a - len(aps_output):
+        print(f'  Issues excluídos (BA=TBD): {before_i - len(issues_output)}')
+        print(f'  APs excluídos    (BA=TBD): {before_a - len(aps_output)}')
+
+    # ── 8. Gerar strings CSV ───────────────────────────────────────────────────
     issues_csv_str = to_csv_string(issues_output, ISSUES_FIELDS)
     aps_csv_str    = to_csv_string(aps_output, APS_FIELDS)
 
-    # ── 8. Injetar no template HTML ────────────────────────────────────────────
+    # ── 9. Injetar no template HTML ────────────────────────────────────────────
     template_path = os.path.join(TEMPLATE_DIR, 'dashboard_template.html')
     if not os.path.exists(template_path):
         print(f'ERRO: template não encontrado: {template_path}')
@@ -666,7 +763,7 @@ def run():
     _write_apps_script(html)
 
     # Gera data.json para o app React (SteerCo)
-    _write_steerco_data(issues_csv_str, aps_csv_str, datetime.now().strftime('%Y-%m-%d %H:%M'))
+    _write_steerco_data(issues_csv_str, aps_csv_str, ttr_data, datetime.now().strftime('%Y-%m-%d %H:%M'))
 
     # Envia para o Slack
     generated_at_str = datetime.now().strftime('%Y-%m-%d %H:%M')
@@ -687,7 +784,7 @@ def _write_apps_script(html):
         f.write(html)
     print(f'  apps_script/index.html atualizado: {len(html.encode()) // 1024} KB')
 
-def _write_steerco_data(issues_csv, aps_csv, generated_at):
+def _write_steerco_data(issues_csv, aps_csv, ttr_data, generated_at):
     """Gera steerco/public/data.json para o app React."""
     steerco_public = os.path.join(BASE_DIR, 'steerco', 'public')
     os.makedirs(steerco_public, exist_ok=True)
@@ -695,6 +792,7 @@ def _write_steerco_data(issues_csv, aps_csv, generated_at):
         'generated_at': generated_at,
         'issues_csv':   issues_csv,
         'aps_csv':      aps_csv,
+        'ttr':          ttr_data,
     }
     path = os.path.join(steerco_public, 'data.json')
     with open(path, 'w', encoding='utf-8') as f:

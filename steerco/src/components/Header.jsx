@@ -26,7 +26,7 @@ export default function Header({ generatedAt }) {
             Global Lending · BCO
           </div>
           <h1 style={{ fontSize: 22, fontWeight: 700, color: '#1A1A2E', lineHeight: 1 }}>
-            Risk Dashboard — {month}
+            Issue Management Global Lending — {month}
           </h1>
         </div>
       </div>
