@@ -601,10 +601,9 @@ def run():
         if issue_status in TERMINAL_ISSUE_STATUSES:
             continue
 
-        # Filtra para Global Lending no output
-        macroprocess   = safe(row.get('process_journey_macroprocess__name', ''))
+        # Filtra para Global Lending no output — usa business_units (Treatment field)
         business_units = safe(row.get('business_units', ''))
-        if macroprocess not in GL_MACROPROCESSES and 'Global Lending' not in business_units:
+        if 'Global Lending' not in business_units:
             continue
 
         code = safe(row.get('code', ''))
