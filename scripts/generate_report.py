@@ -765,7 +765,7 @@ def run():
 
     # Envia para o Slack
     generated_at_str = datetime.now().strftime('%Y-%m-%d %H:%M')
-    send_to_slack(output_path, generated_at_str)
+    send_to_slack(output_path, generated_at_str, issues_output, aps_output)
 
     print(f'\n✓ Dashboard gerado: {output_path}')
     print(f'  Issues processados : {len(issues_output)}')
@@ -797,7 +797,116 @@ def _write_steerco_data(issues_csv, aps_csv, ttr_data, generated_at):
         json.dump(data, f, ensure_ascii=False)
     print(f'  steerco/public/data.json gerado: {len(json.dumps(data).encode()) // 1024} KB')
 
-def send_to_slack(html_path, generated_at):
+def _slack_post(token, channel, text):
+    """Posta uma mensagem de texto no canal Slack."""
+    payload = json.dumps({'channel': channel, 'text': text}).encode()
+    req = urllib.request.Request('https://slack.com/api/chat.postMessage',
+                                 data=payload, method='POST')
+    req.add_header('Authorization', f'Bearer {token}')
+    req.add_header('Content-Type', 'application/json')
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read())
+
+
+def _build_late_summary(issues_output, aps_output, date_str):
+    """
+    Mensagem 1: contagem de itens late por Business Area.
+    Formato: X Issues Late · BA (link1, link2)
+    """
+    from collections import defaultdict
+
+    late_issues    = defaultdict(list)
+    late_potential = defaultdict(list)
+    late_aps       = defaultdict(list)
+
+    for row in issues_output:
+        if row.get('Action') == 'AP Late: Replan/Complete AP':
+            ba    = row.get('Business Area', 'TBD')
+            code  = safe(row.get('code', ''))
+            link  = safe(row.get('projac_link', ''))
+            entry = f'<{link}|{code}>' if link else code
+            if row.get('Type') == 'Potential Issue':
+                late_potential[ba].append(entry)
+            else:
+                late_issues[ba].append(entry)
+
+    for row in aps_output:
+        if row.get('Action') == 'AP Late: Replan/Complete AP':
+            ba    = row.get('Business Area', 'TBD')
+            code  = safe(row.get('ap_code', ''))
+            link  = safe(row.get('ap_link_projac', ''))
+            entry = f'<{link}|{code}>' if link else code
+            late_aps[ba].append(entry)
+
+    lines = [f':red_circle: *Issues & APs Late — {date_str}*']
+
+    if late_issues:
+        lines.append('\n*Issues Late*')
+        for ba in sorted(late_issues):
+            items = late_issues[ba]
+            n = len(items)
+            lines.append(f'{n} Issue{"s" if n > 1 else ""} Late · {ba} ({", ".join(items)})')
+
+    if late_potential:
+        lines.append('\n*Potential Issues Late*')
+        for ba in sorted(late_potential):
+            items = late_potential[ba]
+            n = len(items)
+            lines.append(f'{n} Potential Issue{"s" if n > 1 else ""} Late · {ba} ({", ".join(items)})')
+
+    if late_aps:
+        lines.append('\n*Action Plans Late*')
+        for ba in sorted(late_aps):
+            items = late_aps[ba]
+            n = len(items)
+            lines.append(f'{n} AP{"s" if n > 1 else ""} Late · {ba} ({", ".join(items)})')
+
+    if not late_issues and not late_potential and not late_aps:
+        lines.append(':white_check_mark: Nenhum item late esta semana!')
+
+    return '\n'.join(lines)
+
+
+def _build_actions_summary(issues_output, aps_output, date_str):
+    """
+    Mensagem 2: ações pendentes agrupadas por tipo.
+    Formato: *Create AP* \\n Owner1, Owner2
+    """
+    from collections import defaultdict
+
+    ACTION_ORDER = [
+        'AP Late: Replan/Complete AP',
+        'Create AP',
+        'Complete AP Pending Approval',
+        'Complete AP Pending Validation',
+        'AP will overdue < 2 weeks',
+        'AP On Track: Complete Before Due Date',
+    ]
+
+    actions = defaultdict(list)
+    for row in list(issues_output) + list(aps_output):
+        action = safe(row.get('Action', ''))
+        owner  = safe(row.get('Action Owner', ''))
+        if not action or action == '-' or not owner or owner == '-':
+            continue
+        first = first_name_from_list(owner) or owner
+        actions[action].append(first)
+
+    lines = [f':pushpin: *Ações Pendentes — {date_str}*']
+    for action in ACTION_ORDER:
+        if action not in actions:
+            continue
+        seen, unique = set(), []
+        for o in actions[action]:
+            if o.lower() not in seen:
+                seen.add(o.lower())
+                unique.append(o)
+        lines.append(f'\n*{action}*\n{", ".join(unique)}')
+
+    return '\n'.join(lines)
+
+
+def send_to_slack(html_path, generated_at, issues_output=None, aps_output=None):
     """Envia o dashboard HTML para o canal Slack configurado."""
     token   = os.environ.get('SLACK_TOKEN', '')
     channel = os.environ.get('SLACK_CHANNEL', '')
@@ -869,6 +978,22 @@ def send_to_slack(html_path, generated_at):
         print(f'  ✓ Dashboard enviado para o Slack (canal {channel})')
     else:
         print(f'  ERRO Slack postMessage: {resp4.get("error")}')
+
+    # Mensagem 1: itens late por Business Area
+    if issues_output is not None and aps_output is not None:
+        date_str = datetime.strptime(generated_at, '%Y-%m-%d %H:%M').strftime('%d/%m/%Y')
+        resp_late = _slack_post(token, channel, _build_late_summary(issues_output, aps_output, date_str))
+        if resp_late.get('ok'):
+            print(f'  ✓ Resumo de itens late enviado')
+        else:
+            print(f'  ERRO Slack (late summary): {resp_late.get("error")}')
+
+        # Mensagem 2: ações pendentes
+        resp_actions = _slack_post(token, channel, _build_actions_summary(issues_output, aps_output, date_str))
+        if resp_actions.get('ok'):
+            print(f'  ✓ Resumo de ações pendentes enviado')
+        else:
+            print(f'  ERRO Slack (actions summary): {resp_actions.get("error")}')
 
 if __name__ == '__main__':
     run()
