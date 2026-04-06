@@ -574,20 +574,11 @@ def run():
 
     TERMINAL_ISSUE_STATUSES = {'Risk Accepted', 'Cancelled', 'Done', 'Completed'}
 
-    # Filtro Global Lending aplicado em Python (queries trazem todas as BUs)
-    GL_MACROPROCESSES = {'Global Lending', 'Secured Loans', 'Lending'}
-
     issues_output = []
     for row in issues_rows:
         # Exclui issues com status terminal
         issue_status = safe(row.get('status', ''))
         if issue_status in TERMINAL_ISSUE_STATUSES:
-            continue
-
-        # Filtra para Global Lending
-        macroprocess    = safe(row.get('process_journey_macroprocess__name', ''))
-        business_units  = safe(row.get('business_units', ''))
-        if macroprocess not in GL_MACROPROCESSES and 'Global Lending' not in business_units:
             continue
 
         code = safe(row.get('code', ''))
@@ -666,15 +657,8 @@ def run():
 
     issues_by_code = {safe(r.get('code', '')): r for r in issues_rows}
 
-    # BUs de Global Lending para filtro de APs
-    GL_AP_BUS = {'Global Lending', 'Secured Loans'}
-
     aps_output = []
     for row in ap_rows:  # ap_rows já foi filtrado acima (sem Cancelled/Done)
-        # Filtra para Global Lending
-        ap_bu = safe(row.get('ap_business_unit', ''))
-        if ap_bu not in GL_AP_BUS:
-            continue
 
         issue_link = safe(row.get('issue_link_projac', ''))
         issue_code = issue_link[-7:] if len(issue_link) >= 7 else issue_link.split('/')[-1]

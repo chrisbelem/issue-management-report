@@ -1,115 +1,126 @@
-# Issue Management Report — Global Lending
+# Issue Management Report
 
-Gera automaticamente o dashboard HTML semanal de Issues & Action Plans.
+Gera automaticamente o dashboard HTML semanal de Issues & Action Plans — **todas as BUs** (sem filtro de área).
 
 ---
 
-## Estrutura de pastas
+## Como funciona (automático)
+
+O relatório roda **toda segunda-feira às 8h (horário de Brasília)** via GitHub Actions, sem nenhuma ação manual necessária.
+
+O pipeline:
+1. Busca todos os Issues e Action Plans no Databricks (sem filtro de BU)
+2. Identifica **Potential Issues** via campo `npf_keys` da tabela `projac_issues` (chave PNPF do Jira)
+3. Enriquece Business Area e Business Unit de cada responsável via **Mantiqueira** (`org_level_6` / `org_level_5`)
+4. Gera o dashboard HTML e envia para o **Slack** — pronto para copiar e colar no Google Sites
+
+---
+
+## Estrutura do repositório
 
 ```
 issue-management-report/
-├── data/
-│   ├── input/               ← coloque os CSVs aqui a cada semana
-│   └── config/
-│       └── people_mapping.csv  ← mapeamento pessoa → BU + BA (editar quando necessário)
+├── .github/workflows/
+│   └── generate_report.yml     ← pipeline (toda segunda às 8h BRT)
+├── scripts/
+│   └── generate_report.py      ← script principal
+├── steerco/                    ← app React (SteerCo)
+├── docs/                       ← build servido pelo GitHub Pages
+├── apps_script/                ← versão Google Apps Script
 ├── template/
-│   └── dashboard_template.html ← layout do dashboard (não editar)
-├── output/
-│   └── dashboard.html          ← arquivo gerado pelo script
-└── scripts/
-    └── generate_report.py      ← script principal
+│   └── dashboard_template.html ← template HTML (não editar)
+└── data/
+    └── config/
+        └── people_mapping.csv  ← fallback manual pessoa → BU/BA
 ```
 
 ---
 
-## Passo a passo semanal
+## Secrets necessários no GitHub
 
-### 1. Exportar os dados do Databricks
+`Settings → Secrets and variables → Actions`
 
-Execute as duas queries no Databricks e faça o download como CSV:
+| Secret | O que é |
+|---|---|
+| `DATABRICKS_HOST` | URL do workspace (ex: `https://nubank-e2-general.cloud.databricks.com`) |
+| `DATABRICKS_TOKEN` | Personal Access Token do Databricks |
+| `DATABRICKS_WAREHOUSE_ID` | ID do SQL Warehouse |
+| `SLACK_TOKEN` | Bot token (`xoxb-...`) com `files:write` e `chat:write` |
+| `SLACK_CHANNEL` | ID do canal onde o report é postado |
+| `APPS_SCRIPT_DEPLOYMENT_ID` | ID do deployment do Google Apps Script |
+| `CLASP_CREDENTIALS` | Conteúdo de `~/.clasprc.json` |
+| `CONFLUENCE_URL` | URL base do Confluence |
+| `CONFLUENCE_EMAIL` | E-mail Atlassian |
+| `CONFLUENCE_TOKEN` | API token Atlassian |
+| `CONFLUENCE_PAGE_ID` | ID da página Confluence |
 
-| Arquivo esperado       | Conteúdo                              |
-|------------------------|---------------------------------------|
-| `issues_raw.csv`       | Lista de Issues (query de issues)     |
-| `action_plans_raw.csv` | Lista de Action Plans (query de APs)  |
+> ⚠️ Tokens do Databricks e Atlassian têm validade. Se o pipeline falhar com 401/403, renove os tokens.
 
-Coloque os dois arquivos na pasta `data/input/`.
+---
 
-### 2. Exportar o report da AWS QuickSight *(opcional)*
+## Lógica de dados
 
-Faça o download do report de NP&Fs da AWS QuickSight e salve como:
+### Issues e Action Plans
+- Traz **todos** os issues e APs ativos do Databricks (sem filtro por BU ou macroprocess)
+- Exclui status terminais: `Done`, `Completed`, `Cancelled`, `Risk Accepted`
 
-```
-data/input/npf_report.csv
-```
+### Potential Issues
+- Um issue é marcado como **Potential Issue** quando tem `npf_keys` preenchido na tabela `projac_issues`
+- O link NP&F aponta para `https://nubank.atlassian.net/browse/<PNPF-XXXX>`
 
-> Se esse arquivo não existir, o script roda normalmente — todos os issues serão tratados como "Issue" (não "Potential Issue") e a coluna NP&F+ ficará vazia.
+### Business Area e Business Unit
+- Ambas vêm do **Mantiqueira** (`org_level_6` = Business Area, `org_level_5` = Business Unit)
+- Lookup por email ou `unique_name` do funcionário
+- Fallback manual em `data/config/people_mapping.csv`
 
-### 3. Rodar o script
+### TTR (Time to Remediate)
+- Calculado apenas para issues **Global Lending** fechados (High/Very High) nos últimos 6 meses
 
-Abra o Terminal, navegue até a pasta do projeto e execute:
+---
 
+## Rodar manualmente
+
+Pelo GitHub: `Actions → Generate Issue Management Report → Run workflow`
+
+Localmente:
 ```bash
 cd ~/issue-management-report
+
+# Criar .env com as credenciais
+cat > .env << EOF
+DATABRICKS_HOST=https://nubank-e2-general.cloud.databricks.com
+DATABRICKS_TOKEN=dapi...
+DATABRICKS_WAREHOUSE_ID=...
+SLACK_TOKEN=xoxb-...
+SLACK_CHANNEL=C...
+EOF
+
 python3 scripts/generate_report.py
 ```
 
-O script vai mostrar mensagens de progresso. Se algum nome não estiver no mapeamento de pessoas, ele avisa no terminal (ver seção abaixo).
-
-### 4. Abrir o dashboard
-
-O arquivo gerado estará em:
-
-```
-output/dashboard.html
-```
-
-Abra no navegador normalmente (duplo clique ou arraste para o Chrome/Safari).
-
-### 5. Publicar *(opcional)*
-
-Para publicar no GitHub Pages, faça commit do `output/dashboard.html` e push:
-
-```bash
-git add output/dashboard.html
-git commit -m "Weekly report $(date +%Y-%m-%d)"
-git push
-```
-
-Configure GitHub Pages no repositório para servir a partir da pasta `output/` (ou raiz).
-
 ---
 
-## Manutenção do mapeamento de pessoas
+## Manutenção
 
-Quando o script avisar `"X pessoa(s) sem BU/BA no mapeamento"`, adicione a pessoa no arquivo:
+### Se aparecer pessoa sem BU/BA (BA = TBD)
 
-```
-data/config/people_mapping.csv
-```
-
-Formato:
-```
+Adicione manualmente em `data/config/people_mapping.csv`:
+```csv
 name,bu,ba
-Nome Completo,Nome da BU,Nome da BA
+Nome Completo,Nome da BU,Nome da Business Area
 ```
 
----
+### Se o token do Databricks expirar
+1. Gerar novo token no Databricks
+2. Atualizar `DATABRICKS_TOKEN` em `Settings → Secrets`
+3. Rodar manualmente para confirmar
 
-## Configurações avançadas
-
-As constantes abaixo ficam no topo de `scripts/generate_report.py`:
-
-| Constante              | Padrão                           | O que faz                                     |
-|------------------------|----------------------------------|-----------------------------------------------|
-| `BCO_NAMES`            | `['Christiane Belem', 'Ingrid Sgulmar']` | Nomes das BCOs para regras de Action Owner |
-| `NPF_LINK_COL_INDEX`   | `16`                             | Coluna do NP&F no export da AWS (0-based)     |
-| `NPF_ISSUE_CODE_COL_INDEX` | `0`                          | Coluna do código do issue no export da AWS    |
-| `ALERT_WINDOW_DAYS`    | `14`                             | Dias para alerta "AP will overdue < 2 weeks"  |
+### Se o token Atlassian expirar
+1. Gerar novo em `id.atlassian.com/manage-profile/security/api-tokens`
+2. Atualizar `CONFLUENCE_TOKEN` em `Settings → Secrets`
 
 ---
 
-## Requisitos
+## Contato
 
-- Python 3.8 ou superior (sem instalação de pacotes adicionais)
-- Conexão com internet apenas para o dashboard (Bootstrap/Select2 via CDN)
+Dúvidas: **Christiane Belem**
