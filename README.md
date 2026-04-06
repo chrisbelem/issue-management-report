@@ -12,7 +12,10 @@ O pipeline:
 1. Busca todos os Issues e Action Plans no Databricks (sem filtro de BU)
 2. Identifica **Potential Issues** via campo `npf_keys` da tabela `projac_issues` (chave PNPF do Jira)
 3. Enriquece Business Area e Business Unit de cada responsável via **Mantiqueira** (`org_level_6` / `org_level_5`)
-4. Gera o dashboard HTML e envia para o **Slack** — pronto para copiar e colar no Google Sites
+4. Gera o dashboard HTML (filtrado para Global Lending) e envia **3 mensagens no Slack**:
+   - **Mensagem 1:** arquivo HTML pronto para copiar e colar no Google Sites
+   - **Mensagem 2:** contagem de Issues, Potential Issues e APs late, agrupados por Business Area, com links clicáveis para o Projac
+   - **Mensagem 3:** ações pendentes agrupadas por tipo (AP Late, Create AP, etc.), listando os responsáveis
 
 ---
 
