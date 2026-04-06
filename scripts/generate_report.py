@@ -564,7 +564,7 @@ def run():
     ap_rows = db_run_query(QUERY_APS)
 
     # Filtra APs com status terminal antes de indexar
-    TERMINAL_AP_STATUSES = {'Cancelled', 'Done', 'Completed'}
+    TERMINAL_AP_STATUSES = {'Cancelled', 'Done', 'Completed', 'Not Approved'}
     ap_rows = [r for r in ap_rows if safe(r.get('ap_status', '')) not in TERMINAL_AP_STATUSES]
 
     ap_index = build_ap_index(ap_rows)
@@ -656,17 +656,17 @@ def run():
             )
 
         primary_owner = first_name_from_list(action_owner) or action_owner
-        bu, ba = lookup_person(primary_owner, people_map)
-        # Fallback 1: responsible_name
-        if bu == 'TBD':
-            responsible = safe(row.get('responsible_name', ''))
-            if responsible:
-                bu, ba = lookup_person(responsible, people_map)
-        # Fallback 2: accountable_name
+        # BA reflects who owns the issue: responsible_name first, then accountable, then action owner
+        bu, ba = 'TBD', 'TBD'
+        responsible = safe(row.get('responsible_name', ''))
+        if responsible:
+            bu, ba = lookup_person(responsible, people_map)
         if bu == 'TBD':
             accountable = safe(row.get('accountable_name', ''))
             if accountable:
                 bu, ba = lookup_person(accountable, people_map)
+        if bu == 'TBD':
+            bu, ba = lookup_person(primary_owner, people_map)
         if bu == 'TBD' and primary_owner not in ('-', ''):
             tbd_people.add(primary_owner)
 
