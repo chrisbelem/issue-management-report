@@ -656,19 +656,11 @@ def run():
             )
 
         primary_owner = first_name_from_list(action_owner) or action_owner
-        # BA reflects who owns the issue: responsible_name first, then accountable, then action owner
-        bu, ba = 'TBD', 'TBD'
+        # BA always comes from the Issue Responsible
         responsible = safe(row.get('responsible_name', ''))
-        if responsible:
-            bu, ba = lookup_person(responsible, people_map)
-        if bu == 'TBD':
-            accountable = safe(row.get('accountable_name', ''))
-            if accountable:
-                bu, ba = lookup_person(accountable, people_map)
-        if bu == 'TBD':
-            bu, ba = lookup_person(primary_owner, people_map)
-        if bu == 'TBD' and primary_owner not in ('-', ''):
-            tbd_people.add(primary_owner)
+        bu, ba = lookup_person(responsible, people_map)
+        if bu == 'TBD' and responsible not in ('-', ''):
+            tbd_people.add(responsible)
 
         out = {k: safe(row.get(k, '')) for k in ISSUES_FIELDS}
         out['Type']                = issue_type
