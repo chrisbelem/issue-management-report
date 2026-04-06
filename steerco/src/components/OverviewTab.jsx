@@ -43,53 +43,56 @@ function ActiveShape({ cx, cy, innerRadius, outerRadius, startAngle, endAngle, f
   )
 }
 
+function FilterBadge({ label, color, onClear }) {
+  return (
+    <span style={{ display:'inline-flex', alignItems:'center', gap:6, fontSize:11, color, fontWeight:600,
+      background: color + '15', padding:'3px 10px', borderRadius:20, border:`1px solid ${color}44` }}>
+      {label}
+      <button onClick={onClear} style={{ background:'none', border:'none', color, cursor:'pointer', fontSize:13, padding:0, lineHeight:1, fontWeight:700 }}>×</button>
+    </span>
+  )
+}
+
+function ActiveFilters({ selectedStatus, selectedBA, onClearStatus, onClearBA }) {
+  if (!selectedStatus && !selectedBA) return null
+  return (
+    <div style={{ display:'flex', gap:8, alignItems:'center', marginBottom:16, flexWrap:'wrap' }}>
+      <span style={{ fontSize:11, color:'#6B6B80', fontWeight:600 }}>Filtros ativos:</span>
+      {selectedStatus && <FilterBadge label={`Status: ${selectedStatus}`} color={DONUT_COLORS[selectedStatus]||'#8A05BE'} onClear={onClearStatus} />}
+      {selectedBA     && <FilterBadge label={`BA: ${selectedBA}`}         color="#8A05BE"                                  onClear={onClearBA}     />}
+    </div>
+  )
+}
+
 function StatusDonut({ donutData, selectedStatus, onSelect }) {
   const [activeIndex, setActiveIndex] = useState(null)
-
   const handleClick = useCallback((_, index) => {
-    const clickedStatus = donutData[index]?.name
-    onSelect(prev => prev === clickedStatus ? null : clickedStatus)
+    const s = donutData[index]?.name
+    onSelect(prev => prev === s ? null : s)
   }, [donutData, onSelect])
 
   return (
     <div style={{ background:'#fff', borderRadius:16, padding:'20px 24px', boxShadow:'0 1px 6px rgba(0,0,0,0.07)', border:'1px solid rgba(0,0,0,0.06)' }}>
       <div style={{ marginBottom:12 }}>
         <div style={{ fontSize:14, fontWeight:700, color:'#1A1A2E' }}>Issue Status</div>
-        <div style={{ fontSize:11, color:'#6B6B80', marginTop:2 }}>
-          {selectedStatus
-            ? <span>Filtering by <b style={{ color: DONUT_COLORS[selectedStatus] || '#8A05BE' }}>{selectedStatus}</b> — <button onClick={() => onSelect(null)} style={{ background:'none', border:'none', color:'#8A05BE', cursor:'pointer', fontSize:11, padding:0, fontWeight:600 }}>clear ×</button></span>
-            : 'Click a segment to filter all charts'}
-        </div>
+        <div style={{ fontSize:11, color:'#6B6B80', marginTop:2 }}>Clique para filtrar todos os gráficos</div>
       </div>
       <ResponsiveContainer width="100%" height={220}>
         <PieChart>
-          <Pie
-            data={donutData}
-            cx="50%" cy="50%"
-            innerRadius={55} outerRadius={85}
-            paddingAngle={3}
-            dataKey="value"
-            activeIndex={activeIndex}
-            activeShape={ActiveShape}
-            onMouseEnter={(_, i) => setActiveIndex(i)}
-            onMouseLeave={() => setActiveIndex(null)}
-            onClick={handleClick}
-            style={{ cursor:'pointer' }}
-          >
+          <Pie data={donutData} cx="50%" cy="50%" innerRadius={55} outerRadius={85} paddingAngle={3}
+            dataKey="value" activeIndex={activeIndex} activeShape={ActiveShape}
+            onMouseEnter={(_, i) => setActiveIndex(i)} onMouseLeave={() => setActiveIndex(null)}
+            onClick={handleClick} style={{ cursor:'pointer' }}>
             {donutData.map(entry => (
-              <Cell
-                key={entry.name}
-                fill={DONUT_COLORS[entry.name] || '#8A05BE'}
+              <Cell key={entry.name} fill={DONUT_COLORS[entry.name] || '#8A05BE'}
                 opacity={selectedStatus && selectedStatus !== entry.name ? 0.3 : 1}
                 stroke={selectedStatus === entry.name ? '#1A1A2E' : 'none'}
-                strokeWidth={selectedStatus === entry.name ? 2 : 0}
-              />
+                strokeWidth={selectedStatus === entry.name ? 2 : 0} />
             ))}
           </Pie>
           <Tooltip contentStyle={tooltipStyle} />
         </PieChart>
       </ResponsiveContainer>
-      {/* Legend as clickable chips */}
       <div style={{ display:'flex', flexWrap:'wrap', gap:6, justifyContent:'center', marginTop:4 }}>
         {donutData.map(entry => {
           const c = DONUT_COLORS[entry.name] || '#8A05BE'
@@ -98,8 +101,7 @@ function StatusDonut({ donutData, selectedStatus, onSelect }) {
             <button key={entry.name} onClick={() => onSelect(p => p === entry.name ? null : entry.name)}
               style={{ display:'flex', alignItems:'center', gap:5, padding:'4px 10px', borderRadius:20,
                 background: active ? c + '20' : '#F5F5F8', border: active ? `1.5px solid ${c}` : '1.5px solid transparent',
-                cursor:'pointer', fontSize:12, fontWeight: active ? 700 : 400, color: active ? c : '#6B6B80',
-                transition:'all 0.15s' }}>
+                cursor:'pointer', fontSize:12, fontWeight: active ? 700 : 400, color: active ? c : '#6B6B80', transition:'all 0.15s' }}>
               <span style={{ width:8, height:8, borderRadius:'50%', background:c, display:'inline-block' }} />
               {entry.name} ({entry.value})
             </button>
@@ -110,158 +112,20 @@ function StatusDonut({ donutData, selectedStatus, onSelect }) {
   )
 }
 
-export default function OverviewTab({ issues, aps }) {
-  const [selectedStatus, setSelectedStatus] = useState(null)
-
-  const issuesOnly    = issues.filter(i => i.Type === 'Issue')
-  const potIssues     = issues.filter(i => i.Type === 'Potential Issue')
-  const lateIssues    = issuesOnly.filter(i => i.status === 'Late')
-  const latePotential = potIssues.filter(i => i.status === 'Late')
-  const lateAPs       = aps.filter(a => a.ap_status === 'Late')
-  const pendingLate   = aps.filter(a => ['Pending Validation (late)','Pending Approval (late)'].includes(a.ap_status))
-
-  // Apply status filter
-  const filteredIssues = selectedStatus ? issues.filter(i => i.status === selectedStatus) : issues
-
-  // ── Issues by Business Area ──────────────────────────────────────────────
-  const baIssues = {}
-  filteredIssues.forEach(i => {
-    const ba = i['Business Area'] || 'Unknown'
-    if (!baIssues[ba]) baIssues[ba] = { ba, 'On Track':0, Late:0, TBD:0, 'In Validation':0, total:0 }
-    const s = i.status === 'Late' ? 'Late' : i.status === 'TBD' ? 'TBD' : i.status === 'In Validation' ? 'In Validation' : 'On Track'
-    baIssues[ba][s]++
-    baIssues[ba].total++
-  })
-  const baIssuesData = Object.values(baIssues).sort((a,b) => b.total - a.total).slice(0, 10)
-
-  // ── APs by Business Area ─────────────────────────────────────────────────
-  const baAPs = {}
-  aps.forEach(a => {
-    const ba = a['Business Area'] || 'Unknown'
-    if (!baAPs[ba]) baAPs[ba] = { ba, 'On Track':0, Late:0, Pending:0, total:0 }
-    const s = a.ap_status === 'Late' ? 'Late'
-            : ['Pending Approval','Pending Approval (late)','Pending Validation','Pending Validation (late)','In Validation'].includes(a.ap_status) ? 'Pending'
-            : 'On Track'
-    baAPs[ba][s]++
-    baAPs[ba].total++
-  })
-  const baAPsData = Object.values(baAPs).sort((a,b) => b.total - a.total).slice(0, 10)
-
-  // ── Status donut (always full dataset) ───────────────────────────────────
-  const statusCount = issues.reduce((acc, i) => { acc[i.status] = (acc[i.status]||0)+1; return acc }, {})
-  const donutData   = Object.entries(statusCount).map(([name, value]) => ({ name, value }))
-                            .sort((a,b) => b.value - a.value)
-
-  // ── Rating breakdown (filtered) ───────────────────────────────────────────
-  const ratingCount = filteredIssues.reduce((acc, i) => { acc[i.overall_risk_rating] = (acc[i.overall_risk_rating]||0)+1; return acc }, {})
-  const ratingData  = [
-    { name:'Very High', value: ratingCount['Very High']||0, color:'#9B0020' },
-    { name:'High',      value: ratingCount['High']||0,      color:'#E0002A' },
-    { name:'Medium',    value: ratingCount['Medium']||0,    color:'#D48000' },
-    { name:'Low',       value: ratingCount['Low']||0,       color:'#1A6FCC' },
-  ]
-
-  const filterLabel = selectedStatus
-    ? <span style={{ display:'inline-flex', alignItems:'center', gap:6, fontSize:11, color: DONUT_COLORS[selectedStatus]||'#8A05BE', fontWeight:600, background:(DONUT_COLORS[selectedStatus]||'#8A05BE')+'15', padding:'2px 10px', borderRadius:20, border:`1px solid ${(DONUT_COLORS[selectedStatus]||'#8A05BE')}44` }}>
-        Filtered: {selectedStatus}
-      </span>
-    : null
-
-  return (
-    <div>
-      {/* ── KPI Cards ── */}
-      <div style={{ display:'flex', gap:14, flexWrap:'wrap', marginBottom:36 }}>
-        <KPICard label="Issues"            total={issuesOnly.length}               late={lateIssues.length}    color="#E0002A" icon="🔴" />
-        <KPICard label="Potential Issues"  total={potIssues.length}                late={latePotential.length} color="#D48000" icon="⚠️" />
-        <KPICard label="Action Plans"      total={aps.length}                      late={lateAPs.length}       color="#8A05BE" icon="📋" />
-        <KPICard label="APs Pending (Late)" total={pendingLate.length + lateAPs.length} late={pendingLate.length} color="#D48000" icon="⏳" />
-      </div>
-
-      {/* ── Row 1: Issues by BA + Status Donut ── */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 360px', gap:16, marginBottom:16, alignItems:'start' }}>
-        <ChartCard title="Issues & Potential Issues by Business Area" subtitle="Distribution by status" badge={filterLabel}>
-          <ResponsiveContainer width="100%" height={Math.max(240, baIssuesData.length * 32)}>
-            <BarChart data={baIssuesData} layout="vertical" margin={{ left:8, right:24, top:4, bottom:4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" horizontal={false} />
-              <XAxis type="number" tick={{ fontSize:11, fill:'#6B6B80' }} axisLine={false} tickLine={false} />
-              <YAxis type="category" dataKey="ba" width={120} tick={{ fontSize:11, fill:'#1A1A2E' }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={tooltipStyle} />
-              <Legend iconSize={10} wrapperStyle={{ fontSize:11 }} />
-              <Bar dataKey="On Track"     stackId="a" fill="#007A57" radius={[0,0,0,0]} />
-              <Bar dataKey="In Validation" stackId="a" fill="#1A6FCC" />
-              <Bar dataKey="TBD"          stackId="a" fill="#D48000" />
-              <Bar dataKey="Late"         stackId="a" fill="#E0002A" radius={[0,4,4,0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        <StatusDonut donutData={donutData} selectedStatus={selectedStatus} onSelect={setSelectedStatus} />
-      </div>
-
-      {/* ── Row 2: APs by BA + Rating ── */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 360px', gap:16, marginBottom:16, alignItems:'start' }}>
-        <ChartCard title="Action Plans by Business Area" subtitle="Distribution by status">
-          <ResponsiveContainer width="100%" height={Math.max(240, baAPsData.length * 32)}>
-            <BarChart data={baAPsData} layout="vertical" margin={{ left:8, right:24, top:4, bottom:4 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" horizontal={false} />
-              <XAxis type="number" tick={{ fontSize:11, fill:'#6B6B80' }} axisLine={false} tickLine={false} />
-              <YAxis type="category" dataKey="ba" width={120} tick={{ fontSize:11, fill:'#1A1A2E' }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={tooltipStyle} />
-              <Legend iconSize={10} wrapperStyle={{ fontSize:11 }} />
-              <Bar dataKey="On Track" stackId="a" fill="#007A57" />
-              <Bar dataKey="Pending"  stackId="a" fill="#D48000" />
-              <Bar dataKey="Late"     stackId="a" fill="#E0002A" radius={[0,4,4,0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </ChartCard>
-
-        <ChartCard title="Issues by Risk Rating" subtitle="Risk distribution" badge={filterLabel}>
-          <div style={{ display:'flex', flexDirection:'column', gap:12, padding:'16px 0' }}>
-            {ratingData.map(({ name, value, color }) => {
-              const total = filteredIssues.length
-              const pct = total ? Math.round((value / total) * 100) : 0
-              return (
-                <div key={name}>
-                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:5 }}>
-                    <span style={{ fontWeight:600, color }}>{name}</span>
-                    <span style={{ color:'#6B6B80' }}>{value} ({pct}%)</span>
-                  </div>
-                  <div style={{ height:10, background:'#F0EDF5', borderRadius:5, overflow:'hidden' }}>
-                    <div style={{ height:'100%', width:`${pct}%`, background:color, borderRadius:5, transition:'width 0.6s ease' }} />
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </ChartCard>
-      </div>
-
-      {/* ── Business Area Table ── */}
-      <ChartCard title="Business Area Overview" subtitle="Issues + Action Plans consolidated" badge={filterLabel}>
-        <BATable issues={filteredIssues} aps={aps} />
-      </ChartCard>
-    </div>
-  )
-}
-
-function ChartCard({ title, subtitle, badge, children }) {
+function ChartCard({ title, subtitle, children }) {
   return (
     <div style={{ background:'#fff', borderRadius:16, padding:'20px 24px', boxShadow:'0 1px 6px rgba(0,0,0,0.07)', border:'1px solid rgba(0,0,0,0.06)' }}>
-      <div style={{ marginBottom:16, display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8 }}>
-        <div>
-          <div style={{ fontSize:14, fontWeight:700, color:'#1A1A2E' }}>{title}</div>
-          {subtitle && <div style={{ fontSize:11, color:'#6B6B80', marginTop:2 }}>{subtitle}</div>}
-        </div>
-        {badge}
+      <div style={{ marginBottom:16 }}>
+        <div style={{ fontSize:14, fontWeight:700, color:'#1A1A2E' }}>{title}</div>
+        {subtitle && <div style={{ fontSize:11, color:'#6B6B80', marginTop:2 }}>{subtitle}</div>}
       </div>
       {children}
     </div>
   )
 }
 
-function BATable({ issues, aps }) {
+function BATable({ issues, aps, selectedBA, onSelectBA }) {
   const allBAs = [...new Set([...issues.map(i => i['Business Area']), ...aps.map(a => a['Business Area'])].filter(Boolean))].sort()
-
   return (
     <div style={{ overflowX:'auto' }}>
       <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
@@ -282,9 +146,13 @@ function BATable({ issues, aps }) {
             const lateAP    = baAPs.filter(x => x.ap_status==='Late').length
             const pendingAP = baAPs.filter(x => ['Pending Approval','Pending Approval (late)','Pending Validation','Pending Validation (late)'].includes(x.ap_status)).length
             const red = n => n > 0 ? { color:'#E0002A', fontWeight:700 } : { color:'#6B6B80' }
+            const isSelected = selectedBA === ba
             return (
-              <tr key={ba} style={{ background: idx%2===0?'#FAFAFA':'#fff', borderBottom:'1px solid rgba(0,0,0,0.04)' }}>
-                <td style={{ padding:'10px 12px', fontWeight:600, color:'#1A1A2E' }}>{ba}</td>
+              <tr key={ba} onClick={() => onSelectBA(p => p === ba ? null : ba)}
+                style={{ background: isSelected ? '#8A05BE10' : idx%2===0?'#FAFAFA':'#fff',
+                  borderBottom:'1px solid rgba(0,0,0,0.04)', cursor:'pointer',
+                  outline: isSelected ? '2px solid #8A05BE44' : 'none', transition:'background 0.15s' }}>
+                <td style={{ padding:'10px 12px', fontWeight:700, color: isSelected ? '#8A05BE' : '#1A1A2E' }}>{ba}</td>
                 <td style={{ padding:'10px 12px', textAlign:'center' }}>{baIssues.length}</td>
                 <td style={{ padding:'10px 12px', textAlign:'center', ...red(lateI) }}>{lateI}</td>
                 <td style={{ padding:'10px 12px', textAlign:'center' }}>{baPot.length}</td>
@@ -297,6 +165,166 @@ function BATable({ issues, aps }) {
           })}
         </tbody>
       </table>
+      <div style={{ fontSize:11, color:'#6B6B80', marginTop:8, textAlign:'right' }}>Clique numa linha para filtrar os gráficos por BA</div>
+    </div>
+  )
+}
+
+export default function OverviewTab({ issues, aps }) {
+  const [selectedStatus, setSelectedStatus] = useState(null)
+  const [selectedBA,     setSelectedBA]     = useState(null)
+
+  // ── Apply cross-filters ───────────────────────────────────────────────────
+  const filteredIssues = issues
+    .filter(i => !selectedStatus || i.status === selectedStatus)
+    .filter(i => !selectedBA     || i['Business Area'] === selectedBA)
+
+  const filteredAPs = aps
+    .filter(a => !selectedBA || a['Business Area'] === selectedBA)
+
+  // ── KPI counts (full dataset per type, only BA filter) ───────────────────
+  const issuesBA    = issues.filter(i => !selectedBA || i['Business Area'] === selectedBA)
+  const issuesOnly  = issuesBA.filter(i => i.Type === 'Issue')
+  const potIssues   = issuesBA.filter(i => i.Type === 'Potential Issue')
+  const lateIssues  = issuesOnly.filter(i => i.status === 'Late')
+  const latePot     = potIssues.filter(i => i.status === 'Late')
+  const lateAPs     = filteredAPs.filter(a => a.ap_status === 'Late')
+  const pendingLate = filteredAPs.filter(a => ['Pending Validation (late)','Pending Approval (late)'].includes(a.ap_status))
+
+  // ── Issues by BA (always full dataset for context, highlight selected) ───
+  const baIssuesMap = {}
+  issues.forEach(i => {
+    const ba = i['Business Area'] || 'Unknown'
+    if (!baIssuesMap[ba]) baIssuesMap[ba] = { ba, 'On Track':0, Late:0, TBD:0, 'In Validation':0, total:0 }
+    const s = i.status === 'Late' ? 'Late' : i.status === 'TBD' ? 'TBD' : i.status === 'In Validation' ? 'In Validation' : 'On Track'
+    baIssuesMap[ba][s]++; baIssuesMap[ba].total++
+  })
+  const baIssuesData = Object.values(baIssuesMap).sort((a,b) => b.total - a.total).slice(0,10)
+
+  // ── APs by BA ─────────────────────────────────────────────────────────────
+  const baAPsMap = {}
+  aps.forEach(a => {
+    const ba = a['Business Area'] || 'Unknown'
+    if (!baAPsMap[ba]) baAPsMap[ba] = { ba, 'On Track':0, Late:0, Pending:0, total:0 }
+    const s = a.ap_status === 'Late' ? 'Late'
+            : ['Pending Approval','Pending Approval (late)','Pending Validation','Pending Validation (late)','In Validation'].includes(a.ap_status) ? 'Pending'
+            : 'On Track'
+    baAPsMap[ba][s]++; baAPsMap[ba].total++
+  })
+  const baAPsData = Object.values(baAPsMap).sort((a,b) => b.total - a.total).slice(0,10)
+
+  // ── Status donut (BA-filtered) ────────────────────────────────────────────
+  const statusCount = issuesBA.reduce((acc, i) => { acc[i.status] = (acc[i.status]||0)+1; return acc }, {})
+  const donutData   = Object.entries(statusCount).map(([name, value]) => ({ name, value })).sort((a,b) => b.value - a.value)
+
+  // ── Rating (cross-filtered) ───────────────────────────────────────────────
+  const ratingCount = filteredIssues.reduce((acc, i) => { acc[i.overall_risk_rating] = (acc[i.overall_risk_rating]||0)+1; return acc }, {})
+  const ratingData  = [
+    { name:'Very High', value: ratingCount['Very High']||0, color:'#9B0020' },
+    { name:'High',      value: ratingCount['High']||0,      color:'#E0002A' },
+    { name:'Medium',    value: ratingCount['Medium']||0,    color:'#D48000' },
+    { name:'Low',       value: ratingCount['Low']||0,       color:'#1A6FCC' },
+  ]
+
+  const handleBAClick = useCallback((data) => {
+    if (data?.activePayload?.[0]?.payload?.ba) {
+      const ba = data.activePayload[0].payload.ba
+      setSelectedBA(prev => prev === ba ? null : ba)
+    }
+  }, [])
+
+  const barOpacity = (ba) => (!selectedBA || selectedBA === ba) ? 1 : 0.3
+
+  return (
+    <div>
+      <ActiveFilters
+        selectedStatus={selectedStatus} selectedBA={selectedBA}
+        onClearStatus={() => setSelectedStatus(null)} onClearBA={() => setSelectedBA(null)}
+      />
+
+      {/* ── KPI Cards ── */}
+      <div style={{ display:'flex', gap:14, flexWrap:'wrap', marginBottom:36 }}>
+        <KPICard label="Issues"             total={issuesOnly.length}                    late={lateIssues.length} color="#E0002A" icon="🔴" />
+        <KPICard label="Potential Issues"   total={potIssues.length}                     late={latePot.length}    color="#D48000" icon="⚠️" />
+        <KPICard label="Action Plans"       total={filteredAPs.length}                   late={lateAPs.length}    color="#8A05BE" icon="📋" />
+        <KPICard label="APs Pending (Late)" total={pendingLate.length + lateAPs.length}  late={pendingLate.length} color="#D48000" icon="⏳" />
+      </div>
+
+      {/* ── Row 1: Issues by BA + Status Donut ── */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 360px', gap:16, marginBottom:16, alignItems:'start' }}>
+        <ChartCard title="Issues & Potential Issues por Business Area" subtitle="Clique numa barra para filtrar todos os gráficos">
+          <ResponsiveContainer width="100%" height={Math.max(240, baIssuesData.length * 32)}>
+            <BarChart data={baIssuesData} layout="vertical" margin={{ left:8, right:24, top:4, bottom:4 }} onClick={handleBAClick} style={{ cursor:'pointer' }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" horizontal={false} />
+              <XAxis type="number" tick={{ fontSize:11, fill:'#6B6B80' }} axisLine={false} tickLine={false} />
+              <YAxis type="category" dataKey="ba" width={140} tick={({ x, y, payload }) => (
+                <text x={x} y={y} dy={4} textAnchor="end" fontSize={11}
+                  fill={selectedBA === payload.value ? '#8A05BE' : '#1A1A2E'}
+                  fontWeight={selectedBA === payload.value ? 700 : 400}>
+                  {payload.value}
+                </text>
+              )} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={tooltipStyle} />
+              <Legend iconSize={10} wrapperStyle={{ fontSize:11 }} />
+              <Bar dataKey="On Track"      stackId="a" fill="#007A57" opacity={barOpacity} />
+              <Bar dataKey="In Validation" stackId="a" fill="#1A6FCC" opacity={barOpacity} />
+              <Bar dataKey="TBD"           stackId="a" fill="#D48000" opacity={barOpacity} />
+              <Bar dataKey="Late"          stackId="a" fill="#E0002A" radius={[0,4,4,0]} opacity={barOpacity} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <StatusDonut donutData={donutData} selectedStatus={selectedStatus} onSelect={setSelectedStatus} />
+      </div>
+
+      {/* ── Row 2: APs by BA + Rating ── */}
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 360px', gap:16, marginBottom:16, alignItems:'start' }}>
+        <ChartCard title="Action Plans por Business Area" subtitle="Clique numa barra para filtrar">
+          <ResponsiveContainer width="100%" height={Math.max(240, baAPsData.length * 32)}>
+            <BarChart data={baAPsData} layout="vertical" margin={{ left:8, right:24, top:4, bottom:4 }} onClick={handleBAClick} style={{ cursor:'pointer' }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" horizontal={false} />
+              <XAxis type="number" tick={{ fontSize:11, fill:'#6B6B80' }} axisLine={false} tickLine={false} />
+              <YAxis type="category" dataKey="ba" width={140} tick={({ x, y, payload }) => (
+                <text x={x} y={y} dy={4} textAnchor="end" fontSize={11}
+                  fill={selectedBA === payload.value ? '#8A05BE' : '#1A1A2E'}
+                  fontWeight={selectedBA === payload.value ? 700 : 400}>
+                  {payload.value}
+                </text>
+              )} axisLine={false} tickLine={false} />
+              <Tooltip contentStyle={tooltipStyle} />
+              <Legend iconSize={10} wrapperStyle={{ fontSize:11 }} />
+              <Bar dataKey="On Track" stackId="a" fill="#007A57" opacity={barOpacity} />
+              <Bar dataKey="Pending"  stackId="a" fill="#D48000" opacity={barOpacity} />
+              <Bar dataKey="Late"     stackId="a" fill="#E0002A" radius={[0,4,4,0]} opacity={barOpacity} />
+            </BarChart>
+          </ResponsiveContainer>
+        </ChartCard>
+
+        <ChartCard title="Issues por Risk Rating" subtitle="Filtrado por status e BA ativos">
+          <div style={{ display:'flex', flexDirection:'column', gap:12, padding:'16px 0' }}>
+            {ratingData.map(({ name, value, color }) => {
+              const total = filteredIssues.length
+              const pct = total ? Math.round((value / total) * 100) : 0
+              return (
+                <div key={name}>
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:5 }}>
+                    <span style={{ fontWeight:600, color }}>{name}</span>
+                    <span style={{ color:'#6B6B80' }}>{value} ({pct}%)</span>
+                  </div>
+                  <div style={{ height:10, background:'#F0EDF5', borderRadius:5, overflow:'hidden' }}>
+                    <div style={{ height:'100%', width:`${pct}%`, background:color, borderRadius:5, transition:'width 0.6s ease' }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </ChartCard>
+      </div>
+
+      {/* ── BA Table ── */}
+      <ChartCard title="Visão Consolidada por Business Area" subtitle="Clique numa linha para filtrar">
+        <BATable issues={issues} aps={aps} selectedBA={selectedBA} onSelectBA={setSelectedBA} />
+      </ChartCard>
     </div>
   )
 }

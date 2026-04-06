@@ -44,6 +44,13 @@ ALERT_WINDOW_DAYS = 14
 NPF_BASE_URL      = 'https://nubank.atlassian.net/browse/'
 PROJAC_BASE_URL   = 'https://backoffice.ist.nubank.world/projac/#/im/issues/'
 
+# Normalização de Business Area — nomes alternativos → nome canônico
+BA_ALIASES = {
+    'CPX':                        'Common Product Experience',
+    'Common product experience':  'Common Product Experience',
+    'common product experience':  'Common Product Experience',
+}
+
 # ─── SQL Queries ──────────────────────────────────────────────────────────────
 
 QUERY_ISSUES = """
@@ -70,6 +77,7 @@ SELECT
   i.accountable_name,
   i.business_units,
   i.npf_keys,
+  i.description,
   CONCAT('{projac_base}', i.code) AS projac_link
 FROM ist__dataset.projac_issues i
 LEFT JOIN etl.ist__contract.malhacao__process_journey_macroprocesses macroprocess
@@ -238,6 +246,10 @@ def to_csv_string(rows, fieldnames):
 
 # ─── Mapeamento de pessoas ─────────────────────────────────────────────────────
 
+def normalize_ba(ba):
+    """Normaliza aliases de Business Area para o nome canônico."""
+    return BA_ALIASES.get(ba, ba)
+
 def build_people_mapping(people_rows):
     mapping = {}
     for row in people_rows:
@@ -338,8 +350,8 @@ def enrich_people_map_from_org(people_map, issues_rows, ap_rows):
     for row in org_rows:
         email = safe(row.get('ident__email', ''))
         uname = safe(row.get('ident__unique_name', ''))
-        bu    = safe(row.get('business_unit_name', '')) or 'TBD'
-        ba    = safe(row.get('business_area_name', '')) or 'TBD'
+        bu    = normalize_ba(safe(row.get('business_unit_name', '')) or 'TBD')
+        ba    = normalize_ba(safe(row.get('business_area_name', '')) or 'TBD')
         if email:
             email_to_org[email.lower()] = {'bu': bu, 'ba': ba}
         if uname:
@@ -564,7 +576,7 @@ def run():
     tbd_people = set()
 
     ISSUES_FIELDS = [
-        'Type', 'code', 'NP&F+', 'projac_link', 'key', 'status', 'summary',
+        'Type', 'code', 'NP&F+', 'projac_link', 'key', 'status', 'summary', 'description',
         'countries', 'reporter_name', 'squad_reporter', 'created_at', 'updated_at',
         'due_date_at', 'completed_at', 'responsible_email', 'accountable_email',
         'process_journey_macroprocess__name', 'overall_risk_rating', 'origin',
@@ -642,6 +654,16 @@ def run():
 
         primary_owner = first_name_from_list(action_owner) or action_owner
         bu, ba = lookup_person(primary_owner, people_map)
+        # Fallback 1: responsible_name
+        if bu == 'TBD':
+            responsible = safe(row.get('responsible_name', ''))
+            if responsible:
+                bu, ba = lookup_person(responsible, people_map)
+        # Fallback 2: accountable_name
+        if bu == 'TBD':
+            accountable = safe(row.get('accountable_name', ''))
+            if accountable:
+                bu, ba = lookup_person(accountable, people_map)
         if bu == 'TBD' and primary_owner not in ('-', ''):
             tbd_people.add(primary_owner)
 
@@ -651,7 +673,7 @@ def run():
         out['Action']              = action
         out['Action Owner']        = action_owner
         out['Action Pending From'] = bu
-        out['Business Area']       = ba
+        out['Business Area']       = normalize_ba(ba)
         issues_output.append(out)
 
     # ── 5. Enriquecer Action Plans ─────────────────────────────────────────────
@@ -705,6 +727,11 @@ def run():
 
         primary_owner = first_name_from_list(action_owner) or action_owner
         bu, ba = lookup_person(primary_owner, people_map)
+        # Fallback: ap_assignee_name (já é o primary, mas tenta reporter como último recurso)
+        if bu == 'TBD':
+            reporter_fb = safe(row.get('issue_reporter_name', ''))
+            if reporter_fb:
+                bu, ba = lookup_person(reporter_fb, people_map)
         if bu == 'TBD' and primary_owner not in ('-', ''):
             tbd_people.add(primary_owner)
 
@@ -715,7 +742,7 @@ def run():
         out['Action']              = action
         out['Action Owner']        = action_owner
         out['Action Pending From'] = bu
-        out['Business Area']       = ba
+        out['Business Area']       = normalize_ba(ba)
         aps_output.append(out)
 
     # ── 6. Alertas de mapeamento incompleto ────────────────────────────────────

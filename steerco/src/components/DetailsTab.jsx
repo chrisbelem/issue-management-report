@@ -1,8 +1,7 @@
 import LateIssues, { LatePotentialIssues } from './LateIssues'
 import CriticalAPs from './CriticalAPs'
-import MORKPIs     from './MORKPIs'
 
-export default function DetailsTab({ issues, aps, ttr }) {
+export default function DetailsTab({ issues, aps }) {
   const lateIssues      = issues.filter(i => i.status === 'Late' && i.Type === 'Issue')
   const latePotential   = issues.filter(i => i.status === 'Late' && i.Type === 'Potential Issue')
   const lateAPs         = aps.filter(a => a.ap_status === 'Late')
@@ -22,7 +21,6 @@ export default function DetailsTab({ issues, aps, ttr }) {
         pendingVal={pendingVal}
         pendingAppr={pendingAppr}
       />
-      <MORKPIs issues={issues} aps={aps} ttr={ttr} />
     </div>
   )
 }
