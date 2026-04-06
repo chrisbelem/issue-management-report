@@ -287,7 +287,7 @@ export default function OverviewTab({ issues, aps }) {
       map[ba][statusFn(r)]++
       map[ba].total++
     })
-    return Object.values(map).sort((a, b) => b.total - a.total).slice(0, 10)
+    return Object.values(map).sort((a, b) => b.total - a.total)
   }
   const issueStatus = i => i.status === 'Late' ? 'Late' : i.status === 'TBD' ? 'TBD' : i.status === 'In Validation' ? 'In Validation' : 'On Track'
   const apStatus    = a => a.ap_status === 'Late' ? 'Late' : ['Pending Approval','Pending Approval (late)','Pending Validation','Pending Validation (late)','In Validation'].includes(a.ap_status) ? 'Pending' : 'On Track'
@@ -309,12 +309,29 @@ export default function OverviewTab({ issues, aps }) {
     { name: 'Low',       value: ratingCount['Low']       || 0, color: '#1A6FCC' },
   ]
 
-  const handleBAClick = useCallback(data => {
-    if (data?.activePayload?.[0]?.payload?.ba) {
-      const ba = data.activePayload[0].payload.ba
-      setSelectedBA(prev => prev === ba ? null : ba)
+  const [chartDrilldown, setChartDrilldown] = useState(null) // { ba, type, items }
+
+  const handleBAClick = useCallback((data, chartType) => {
+    if (!data?.activePayload?.[0]?.payload?.ba) return
+    const ba = data.activePayload[0].payload.ba
+    setSelectedBA(prev => prev === ba ? null : ba)
+
+    // Build drilldown items
+    let rows
+    if (chartType === 'Issue' || chartType === 'Potential Issue') {
+      rows = issues
+        .filter(i => i['Business Area'] === ba && i.Type === chartType)
+        .map(i => ({ code: i.code, summary: i.summary, link: i.projac_link, status: i.status, rating: i.overall_risk_rating }))
+    } else {
+      rows = aps
+        .filter(a => a['Business Area'] === ba)
+        .map(a => ({ code: a.ap_code, summary: a.ap_summary, link: a.ap_link_projac, status: a.ap_status, issueCode: a['Issue Code'], issueLink: a.issue_link_projac }))
     }
-  }, [])
+
+    setChartDrilldown(prev =>
+      prev?.ba === ba && prev?.type === chartType ? null : { ba, type: chartType, items: rows }
+    )
+  }, [issues, aps])
 
   const barOp = ba => (!selectedBA || selectedBA === ba) ? 1 : 0.3
 
@@ -345,10 +362,10 @@ export default function OverviewTab({ issues, aps }) {
 
       {/* Row 1: Issues by BA | Status donut */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 16, marginBottom: 16, alignItems: 'start' }}>
-        <ChartCard title="Issues by Business Area" subtitle="Click a bar to filter all charts">
+        <ChartCard title="Issues by Business Area" subtitle="Click a bar to filter and see items below">
           <ResponsiveContainer width="100%" height={Math.max(200, baIssuesData.length * 34)}>
             <BarChart data={baIssuesData} layout="vertical" margin={{ left: 8, right: 24, top: 4, bottom: 4 }}
-              onClick={handleBAClick} style={{ cursor: 'pointer' }}>
+              onClick={d => handleBAClick(d, 'Issue')} style={{ cursor: 'pointer' }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" horizontal={false} />
               <XAxis type="number" tick={{ fontSize: 11, fill: '#6B6B80' }} axisLine={false} tickLine={false} />
               <YAxis {...BAYAxis({ selectedBA })} />
@@ -366,12 +383,12 @@ export default function OverviewTab({ issues, aps }) {
 
       {/* Row 2: Potential Issues by BA | Rating */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 16, marginBottom: 16, alignItems: 'start' }}>
-        <ChartCard title="Potential Issues by Business Area" subtitle="Click a bar to filter all charts">
+        <ChartCard title="Potential Issues by Business Area" subtitle="Click a bar to filter and see items below">
           {baPotData.length === 0
             ? <div style={{ padding: '32px 0', textAlign: 'center', color: '#6B6B80', fontSize: 13 }}>No potential issues</div>
             : <ResponsiveContainer width="100%" height={Math.max(200, baPotData.length * 34)}>
                 <BarChart data={baPotData} layout="vertical" margin={{ left: 8, right: 24, top: 4, bottom: 4 }}
-                  onClick={handleBAClick} style={{ cursor: 'pointer' }}>
+                  onClick={d => handleBAClick(d, 'Potential Issue')} style={{ cursor: 'pointer' }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" horizontal={false} />
                   <XAxis type="number" tick={{ fontSize: 11, fill: '#6B6B80' }} axisLine={false} tickLine={false} />
                   <YAxis {...BAYAxis({ selectedBA })} />
@@ -408,10 +425,10 @@ export default function OverviewTab({ issues, aps }) {
 
       {/* Row 3: Action Plans by BA */}
       <div style={{ marginBottom: 16 }}>
-        <ChartCard title="Action Plans by Business Area" subtitle="Click a bar to filter">
+        <ChartCard title="Action Plans by Business Area" subtitle="Click a bar to filter and see items below">
           <ResponsiveContainer width="100%" height={Math.max(200, baAPsData.length * 34)}>
             <BarChart data={baAPsData} layout="vertical" margin={{ left: 8, right: 24, top: 4, bottom: 4 }}
-              onClick={handleBAClick} style={{ cursor: 'pointer' }}>
+              onClick={d => handleBAClick(d, 'AP')} style={{ cursor: 'pointer' }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" horizontal={false} />
               <XAxis type="number" tick={{ fontSize: 11, fill: '#6B6B80' }} axisLine={false} tickLine={false} />
               <YAxis {...BAYAxis({ selectedBA })} />
@@ -429,6 +446,69 @@ export default function OverviewTab({ issues, aps }) {
       <ChartCard title="Consolidated View by Business Area" subtitle="Click a count to drill down to individual items · Click a row to filter charts">
         <BATable issues={issues} aps={aps} selectedBA={selectedBA} onSelectBA={setSelectedBA} />
       </ChartCard>
+
+      {/* Chart bar drilldown — appears at bottom when clicking a bar */}
+      {chartDrilldown && (
+        <div style={{ marginTop: 24, background: '#fff', borderRadius: 16, padding: '20px 24px',
+          boxShadow: '0 1px 6px rgba(0,0,0,0.07)', border: '1.5px solid #8A05BE44' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div>
+              <span style={{ fontSize: 15, fontWeight: 700, color: '#1A1A2E' }}>
+                {chartDrilldown.type === 'AP' ? 'Action Plans' : chartDrilldown.type + 's'} — {chartDrilldown.ba}
+              </span>
+              <span style={{ marginLeft: 10, fontSize: 12, color: '#6B6B80' }}>
+                {chartDrilldown.items.length} item{chartDrilldown.items.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <button onClick={() => setChartDrilldown(null)} style={{ background: 'none', border: 'none',
+              fontSize: 20, cursor: 'pointer', color: '#6B6B80', lineHeight: 1 }}>×</button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {chartDrilldown.items.length === 0
+              ? <div style={{ color: '#6B6B80', fontSize: 13, textAlign: 'center', padding: 24 }}>No items found</div>
+              : chartDrilldown.items.map((item, i) => {
+                  const STATUS_COLOR = { Late: '#E0002A', 'On Track': '#007A57', TBD: '#D48000', 'In Validation': '#1A6FCC' }
+                  const RATING_COLOR = { 'Very High': '#9B0020', High: '#E0002A', Medium: '#D48000', Low: '#1A6FCC' }
+                  const statusColor = STATUS_COLOR[item.status] || '#6B6B80'
+                  return (
+                    <div key={i} style={{ background: '#F8F7FB', borderRadius: 10, padding: '12px 16px',
+                      border: '1px solid rgba(0,0,0,0.06)', display: 'flex', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+                      {/* Code + parent issue for APs */}
+                      <div style={{ minWidth: 110 }}>
+                        <a href={item.link} target="_blank" rel="noreferrer"
+                          style={{ color: '#8A05BE', fontWeight: 700, fontSize: 13, textDecoration: 'none' }}>
+                          🔗 {item.code}
+                        </a>
+                        {item.issueCode && (
+                          <div style={{ fontSize: 11, marginTop: 3 }}>
+                            <a href={item.issueLink} target="_blank" rel="noreferrer"
+                              style={{ color: '#8A05BE99', textDecoration: 'none' }}>↑ {item.issueCode}</a>
+                          </div>
+                        )}
+                      </div>
+                      {/* Summary */}
+                      <div style={{ flex: 1, fontSize: 13, color: '#1A1A2E', minWidth: 200 }}>{item.summary}</div>
+                      {/* Badges */}
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                        {item.status && (
+                          <span style={{ background: statusColor + '15', color: statusColor,
+                            border: `1px solid ${statusColor}44`, borderRadius: 6,
+                            padding: '2px 8px', fontSize: 11, fontWeight: 600 }}>{item.status}</span>
+                        )}
+                        {item.rating && (
+                          <span style={{ background: (RATING_COLOR[item.rating] || '#888') + '15',
+                            color: RATING_COLOR[item.rating] || '#888',
+                            border: `1px solid ${(RATING_COLOR[item.rating] || '#888')}44`,
+                            borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 600 }}>{item.rating}</span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })
+            }
+          </div>
+        </div>
+      )}
     </div>
   )
 }
