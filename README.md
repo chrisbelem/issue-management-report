@@ -60,9 +60,23 @@ issue-management-report/
 
 ## Lógica de dados
 
+### Por que o script busca todas as BUs no Databricks?
+
+O script **não filtra por BU na query SQL** — ele traz issues e APs de todas as áreas intencionalmente. Isso é necessário para que o Mantiqueira consiga resolver corretamente o Business Area e Business Unit de cada responsável, independente de onde essa pessoa trabalha na organização.
+
+O filtro para **Global Lending** é aplicado **depois** do enriquecimento, apenas na geração do HTML:
+
+| Etapa | Comportamento |
+|---|---|
+| Query Databricks | Traz **tudo** (todas as BUs) |
+| Enriquecimento Mantiqueira | Usa **todos** os dados para mapear BU/BA corretamente |
+| HTML / Slack | Exibe apenas itens de **Global Lending** |
+
 ### Issues e Action Plans
-- Traz **todos** os issues e APs ativos do Databricks (sem filtro por BU ou macroprocess)
+- Busca todos os issues e APs ativos do Databricks (sem filtro de BU na query)
 - Exclui status terminais: `Done`, `Completed`, `Cancelled`, `Risk Accepted`
+- **No HTML:** exibe apenas issues cujo macroprocess é `Global Lending`, `Secured Loans` ou `Lending`, ou cuja `business_units` contém `Global Lending`
+- **No HTML:** exibe apenas APs cuja `ap_business_unit` é `Global Lending` ou `Secured Loans`
 
 ### Potential Issues
 - Um issue é marcado como **Potential Issue** quando tem `npf_keys` preenchido na tabela `projac_issues`
