@@ -53,6 +53,8 @@ BA_ALIASES = {
     'unsecured loans':            'Unsecured Lending',
     'Lending PJ':                 'PJ Lending',
     'lending pj':                 'PJ Lending',
+    'Lending Foundations':        'Lending Foundations Platforms',
+    'lending foundations':        'Lending Foundations Platforms',
 }
 
 # ─── SQL Queries ──────────────────────────────────────────────────────────────
