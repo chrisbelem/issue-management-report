@@ -2,6 +2,18 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
          ResponsiveContainer, PieChart, Pie, Cell, Sector } from 'recharts'
 import { useEffect, useState, useCallback } from 'react'
 
+/* ─── BA normalization (mirrors Python BA_ALIASES) ────────────────────────── */
+const BA_ALIASES = {
+  'CPX': 'Common Product Experience',
+  'Common product experience': 'Common Product Experience',
+  'common product experience': 'Common Product Experience',
+  'Unsecured Loans': 'Unsecured Lending',
+  'unsecured loans': 'Unsecured Lending',
+  'Lending PJ': 'PJ Lending',
+  'lending pj': 'PJ Lending',
+}
+const normalizeBA = ba => BA_ALIASES[ba] || ba
+
 /* ─── Helpers ─────────────────────────────────────────────────────────────── */
 function AnimatedNumber({ value, color, size = 44 }) {
   const [display, setDisplay] = useState(0)
@@ -150,7 +162,7 @@ function BATable({ issues, aps, selectedBA, onSelectBA }) {
   const [drilldown, setDrilldown] = useState(null) // { ba, label, items: [{code, summary, link}] }
 
   const allBAs = [...new Set(
-    [...issues.map(i => i['Business Area']), ...aps.map(a => a['Business Area'])].filter(Boolean)
+    [...issues.map(i => normalizeBA(i['Business Area'] || '')), ...aps.map(a => normalizeBA(a['Business Area'] || ''))].filter(Boolean)
   )].sort()
 
   const openDrilldown = (e, ba, label, items) => {
@@ -190,9 +202,9 @@ function BATable({ issues, aps, selectedBA, onSelectBA }) {
           </thead>
           <tbody>
             {allBAs.map((ba, idx) => {
-              const baIssues  = issues.filter(x => x['Business Area'] === ba && x.Type === 'Issue')
-              const baPot     = issues.filter(x => x['Business Area'] === ba && x.Type === 'Potential Issue')
-              const baAPs     = aps.filter(x => x['Business Area'] === ba)
+              const baIssues  = issues.filter(x => normalizeBA(x['Business Area']) === ba && x.Type === 'Issue')
+              const baPot     = issues.filter(x => normalizeBA(x['Business Area']) === ba && x.Type === 'Potential Issue')
+              const baAPs     = aps.filter(x => normalizeBA(x['Business Area']) === ba)
               const lateI     = baIssues.filter(x => x.status === 'Late')
               const latePot   = baPot.filter(x => x.status === 'Late')
               const lateAP    = baAPs.filter(x => x.ap_status === 'Late')
@@ -270,11 +282,11 @@ export default function OverviewTab({ issues, aps }) {
   // Cross-filtered datasets
   const filteredIssues = issues
     .filter(i => !selectedStatus || i.status === selectedStatus)
-    .filter(i => !selectedBA     || i['Business Area'] === selectedBA)
-  const filteredAPs = aps.filter(a => !selectedBA || a['Business Area'] === selectedBA)
+    .filter(i => !selectedBA     || normalizeBA(i['Business Area']) === selectedBA)
+  const filteredAPs = aps.filter(a => !selectedBA || normalizeBA(a['Business Area']) === selectedBA)
 
   // KPI counts (BA-filtered only, not status-filtered, for totals)
-  const issuesBA   = issues.filter(i => !selectedBA || i['Business Area'] === selectedBA)
+  const issuesBA   = issues.filter(i => !selectedBA || normalizeBA(i['Business Area']) === selectedBA)
   const issuesOnly = issuesBA.filter(i => i.Type === 'Issue')
   const potIssues  = issuesBA.filter(i => i.Type === 'Potential Issue')
 
@@ -282,7 +294,7 @@ export default function OverviewTab({ issues, aps }) {
   const buildBAData = (rows, statusFn) => {
     const map = {}
     rows.forEach(r => {
-      const ba = r['Business Area'] || 'Unknown'
+      const ba = normalizeBA(r['Business Area'] || 'Unknown')
       if (!map[ba]) map[ba] = { ba, 'On Track': 0, Late: 0, TBD: 0, 'In Validation': 0, total: 0 }
       map[ba][statusFn(r)]++
       map[ba].total++
@@ -320,11 +332,11 @@ export default function OverviewTab({ issues, aps }) {
     let rows
     if (chartType === 'Issue' || chartType === 'Potential Issue') {
       rows = issues
-        .filter(i => i['Business Area'] === ba && i.Type === chartType)
+        .filter(i => normalizeBA(i['Business Area']) === ba && i.Type === chartType)
         .map(i => ({ code: i.code, summary: i.summary, link: i.projac_link, status: i.status, rating: i.overall_risk_rating }))
     } else {
       rows = aps
-        .filter(a => a['Business Area'] === ba)
+        .filter(a => normalizeBA(a['Business Area']) === ba)
         .map(a => ({ code: a.ap_code, summary: a.ap_summary, link: a.ap_link_projac, status: a.ap_status, issueCode: a['Issue Code'], issueLink: a.issue_link_projac }))
     }
 
