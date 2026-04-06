@@ -69,7 +69,7 @@ export default function App() {
           📊 Dashboard
         </button>
         <button style={TAB_STYLE(tab==='details')} onClick={() => setTab('details')}>
-          📋 Detalhes
+          📋 Detail
         </button>
       </div>
 

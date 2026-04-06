@@ -49,6 +49,10 @@ BA_ALIASES = {
     'CPX':                        'Common Product Experience',
     'Common product experience':  'Common Product Experience',
     'common product experience':  'Common Product Experience',
+    'Unsecured Loans':            'Unsecured Lending',
+    'unsecured loans':            'Unsecured Lending',
+    'Lending PJ':                 'PJ Lending',
+    'lending pj':                 'PJ Lending',
 }
 
 # ─── SQL Queries ──────────────────────────────────────────────────────────────

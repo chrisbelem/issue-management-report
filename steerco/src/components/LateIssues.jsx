@@ -71,7 +71,6 @@ function PresentationNotes({ noteKey }) {
 
 function IssueCard({ issue, borderColor }) {
   const npfKey = issue['NP&F+'] && issue['NP&F+'] !== '-' ? issue['NP&F+'] : null
-  const desc   = issue.description?.trim()
 
   return (
     <div style={{
@@ -97,7 +96,7 @@ function IssueCard({ issue, borderColor }) {
           )}
         </div>
 
-        {/* Center: summary + badges */}
+        {/* Center: summary + badges + notes */}
         <div style={{ flex: 1, minWidth: 200 }}>
           <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4, color: '#1A1A2E' }}>{issue.summary}</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 4 }}>
@@ -105,14 +104,6 @@ function IssueCard({ issue, borderColor }) {
             <Badge text={issue['Business Area'] || 'N/A'} color="#1A6FCC" />
             <Badge text={issue.countries?.replace(/[\[\]"]/g, '') || ''} color="#6B6B80" />
           </div>
-          {/* Description from Projac */}
-          {desc && (
-            <div style={{ marginTop: 8, padding: '8px 12px', background: '#F8F7FB', borderRadius: 7,
-              fontSize: 12, color: '#4A4A60', lineHeight: 1.6, borderLeft: '3px solid #8A05BE33' }}>
-              {desc.length > 400 ? desc.slice(0, 400) + '…' : desc}
-            </div>
-          )}
-          {/* Presentation notes (localStorage) */}
           <PresentationNotes noteKey={issue.code} />
         </div>
 
