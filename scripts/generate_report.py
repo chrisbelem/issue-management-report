@@ -574,11 +574,21 @@ def run():
 
     TERMINAL_ISSUE_STATUSES = {'Risk Accepted', 'Cancelled', 'Done', 'Completed'}
 
+    # Filtro Global Lending aplicado no output (queries trazem tudo para enriquecer Mantiqueira)
+    GL_MACROPROCESSES = {'Global Lending', 'Secured Loans', 'Lending'}
+    GL_AP_BUS         = {'Global Lending', 'Secured Loans'}
+
     issues_output = []
     for row in issues_rows:
         # Exclui issues com status terminal
         issue_status = safe(row.get('status', ''))
         if issue_status in TERMINAL_ISSUE_STATUSES:
+            continue
+
+        # Filtra para Global Lending no output
+        macroprocess   = safe(row.get('process_journey_macroprocess__name', ''))
+        business_units = safe(row.get('business_units', ''))
+        if macroprocess not in GL_MACROPROCESSES and 'Global Lending' not in business_units:
             continue
 
         code = safe(row.get('code', ''))
@@ -659,6 +669,10 @@ def run():
 
     aps_output = []
     for row in ap_rows:  # ap_rows já foi filtrado acima (sem Cancelled/Done)
+        # Filtra para Global Lending no output
+        ap_bu = safe(row.get('ap_business_unit', ''))
+        if ap_bu not in GL_AP_BUS:
+            continue
 
         issue_link = safe(row.get('issue_link_projac', ''))
         issue_code = issue_link[-7:] if len(issue_link) >= 7 else issue_link.split('/')[-1]
