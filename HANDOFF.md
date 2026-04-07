@@ -1,191 +1,259 @@
 # Handoff — Issue Management Global Lending Dashboard
 
-Este documento descreve tudo que a pessoa responsável por manter este projeto precisa saber.
+Guia completo para a pessoa que vai manter este report.
 
 ---
 
 ## O que é este projeto
 
-Dashboard automatizado de **Issues & Action Plans do Global Lending**, gerado diariamente (dias úteis) a partir de dados do Databricks. O report é publicado em três lugares:
+Dashboard automatizado de **Issues & Action Plans do Global Lending**, publicado toda segunda-feira.
 
-| Destino | URL / Localização |
+| Destino | URL |
 |---|---|
-| GitHub Pages (SteerCo React app) | `https://chrisbelem.github.io/issue-management-report/steerco/` |
-| Google Apps Script | Deployment ID configurado no secret `APPS_SCRIPT_DEPLOYMENT_ID` |
-| Confluence | Página configurada no secret `CONFLUENCE_PAGE_ID` |
-| Slack | Canal configurado no secret `SLACK_CHANNEL` |
+| Dashboard interativo (SteerCo) | `https://chrisbelem.github.io/issue-management-report/steerco/` |
+| Slack | Canal configurado em `.env` (mensagens com resumo semanal) |
 
 ---
 
-## Estrutura do repositório
+## Pré-requisitos (instalar uma vez)
 
-```
-issue-management-report/
-├── .github/workflows/
-│   └── generate_report.yml     ← pipeline de automação (roda todo dia útil às 8h BRT)
-├── scripts/
-│   └── generate_report.py      ← script principal: busca dados, enriquece e gera o dashboard
-├── steerco/                    ← app React (dashboard interativo para SteerCo)
-│   ├── src/components/         ← componentes do dashboard
-│   └── public/data.json        ← dados gerados pelo script (não editar manualmente)
-├── docs/                       ← build do app React (GitHub Pages serve daqui)
-│   └── steerco/
-├── template/
-│   └── dashboard_template.html ← template do dashboard HTML clássico
-├── apps_script/                ← versão Google Apps Script do dashboard
-└── data/
-    └── config/
-        └── people_mapping.csv  ← fallback manual de pessoa → BU/BA (raramente necessário)
+Você vai precisar de um Mac com acesso à rede Nubank (VPN ou escritório).
+
+### 1. Homebrew
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
+### 2. Python 3
+```bash
+brew install python3
+```
+Verifique: `python3 --version` deve retornar 3.11 ou superior.
+
+O script usa **apenas bibliotecas padrão do Python** (urllib, csv, json) — não precisa instalar nada via pip.
+
+### 3. Node.js e npm
+```bash
+brew install node
+```
+Verifique: `node --version` deve retornar 20 ou superior.
+
+### 4. Git
+```bash
+brew install git
+```
+
 ---
 
-## Como funciona a automação
+## Configuração inicial (fazer uma vez)
 
-O GitHub Actions roda o workflow `.github/workflows/generate_report.yml` automaticamente:
+### 1. Clonar o repositório
+```bash
+git clone https://github.com/chrisbelem/issue-management-report.git
+cd issue-management-report
+```
 
-- **Agendamento:** todos os dias úteis (segunda a sexta) às 8h horário de Brasília (11h UTC)
-- **Trigger manual:** pode ser disparado a qualquer momento em `Actions → Generate Issue Management Report → Run workflow`
+### 2. Instalar dependências do React
+```bash
+cd steerco
+npm install
+cd ..
+```
 
-### Passos do pipeline
+### 3. Criar o arquivo `.env` com as credenciais
 
-1. **`generate_report.py`** — Busca issues e APs no Databricks, enriquece com Business Area via Mantiqueira (org_level_6), gera `docs/index.html` e `steerco/public/data.json`
-2. **Build React** — Compila o app SteerCo (`npm ci && npm run build`) e gera os arquivos em `docs/steerco/`
-3. **Deploy Google Apps Script** — Publica via `clasp`
-4. **Publish Confluence** — Sobe o `docs/index.html` como attachment na página configurada
-5. **Commit & push** — Faz commit dos arquivos gerados e push para `main` (GitHub Pages atualiza automaticamente)
+Criar o arquivo `.env` na raiz do projeto (substituir os valores reais):
+```
+DATABRICKS_HOST=https://nubank-e2-general.cloud.databricks.com
+DATABRICKS_TOKEN=dapi...
+DATABRICKS_WAREHOUSE_ID=3f3791356e419544
+SLACK_TOKEN=xoxb-...
+SLACK_CHANNEL=C09QVFRBB51
+```
 
----
+**Como obter cada credencial:**
 
-## Secrets configurados no GitHub
-
-Acessar em: `Settings → Secrets and variables → Actions`
-
-| Secret | O que é |
+| Credencial | Onde buscar |
 |---|---|
-| `DATABRICKS_HOST` | URL do workspace Databricks (ex: `https://nubank-e2-general.cloud.databricks.com`) |
-| `DATABRICKS_TOKEN` | Personal Access Token do Databricks com acesso às tabelas de issues |
-| `DATABRICKS_WAREHOUSE_ID` | ID do SQL Warehouse do Databricks |
-| `SLACK_TOKEN` | Bot token do Slack (`xoxb-...`) com permissão `files:write` e `chat:write` |
-| `SLACK_CHANNEL` | ID do canal Slack onde o report é postado |
-| `APPS_SCRIPT_DEPLOYMENT_ID` | ID do deployment do Google Apps Script |
-| `CLASP_CREDENTIALS` | Conteúdo do arquivo `~/.clasprc.json` (credenciais OAuth do clasp) |
-| `CONFLUENCE_URL` | URL base do Confluence (ex: `https://nubank.atlassian.net`) |
-| `CONFLUENCE_EMAIL` | E-mail da conta Atlassian usada para publicar |
-| `CONFLUENCE_TOKEN` | API token do Atlassian |
-| `CONFLUENCE_PAGE_ID` | ID numérico da página Confluence onde o report é publicado |
+| `DATABRICKS_TOKEN` | Databricks → User Settings → Developer → Access Tokens → Generate new token |
+| `DATABRICKS_HOST` | URL do workspace Databricks (não muda) |
+| `DATABRICKS_WAREHOUSE_ID` | Não muda — já está preenchido acima |
+| `SLACK_TOKEN` | Pegar com o dono do bot no Slack (token `xoxb-...`) |
+| `SLACK_CHANNEL` | ID do canal (não muda) |
 
-> ⚠️ **Atenção:** Os tokens do Databricks e Atlassian têm validade. Se o pipeline falhar com erro 401/403, o primeiro passo é renovar os tokens.
+### 4. Configurar acesso ao GitHub
 
----
+Você precisará ter permissão de push no repositório `chrisbelem/issue-management-report`.
+Peça para Christiane Belem te adicionar como colaborador no GitHub.
 
-## Infraestrutura — Self-Hosted Runner
-
-O pipeline usa um **self-hosted runner** (não o runner padrão do GitHub) porque o Databricks tem ACL de IP que bloqueia IPs externos.
-
-### Status atual
-
-O runner **ainda precisa ser provisionado**. Enquanto isso, o pipeline vai falhar com erro de IP bloqueado.
-
-### Como configurar
-
-1. Provisionar uma máquina/container dentro da rede Nubank com acesso ao Databricks
-2. Acessar `github.com/chrisbelem/issue-management-report → Settings → Actions → Runners → New self-hosted runner`
-3. Seguir as instruções para instalar e registrar o runner
-4. O runner precisa ter acesso a:
-   - Databricks (inbound já liberado por estar na rede interna)
-   - Internet (para push no GitHub, post no Slack, publish no Confluence)
-   - Python 3.11+ e Node.js 20+
+Configurar sua identidade no git:
+```bash
+git config --global user.name "Seu Nome"
+git config --global user.email "seu.email@nubank.com.br"
+```
 
 ---
 
-## Tabelas do Databricks utilizadas
+## Como rodar o report manualmente
 
-| Tabela | Finalidade |
-|---|---|
-| `ist__dataset.projac_issues` | Issues do Projac |
-| `ist__dataset.projac_action_plans` | Action Plans do Projac |
-| `etl.br__dataset.jira_issues_status_history` | Histórico de status dos APs |
-| `etl.ist__contract.malhacao__process_journey_macroprocesses` | Nome do macroprocess (ex: Global Lending) |
-| `etl.ist__contract.mantiqueira__idents` | Email e unique_name dos funcionários |
-| `etl.br__series_contract.mantiqueira_group_org_chart_levels` | Estrutura org (org_level_5 = BU, org_level_6 = Business Area) |
+Sempre com VPN ativa (ou no escritório):
 
-### Filtro Global Lending
+```bash
+cd ~/issue-management-report
 
-O script filtra issues em Python (não no SQL) usando:
-- `macroprocess IN ('Global Lending', 'Secured Loans', 'Lending')` **OU**
-- `business_units` contém `'Global Lending'`
+# 1. Gera dados + envia Slack
+/opt/homebrew/bin/python3 scripts/generate_report.py
 
-Para APs, filtra por `ap_business_unit IN ('Global Lending', 'Secured Loans')`.
+# 2. Build do dashboard React
+cd steerco
+/opt/homebrew/bin/npm run build
+cd ..
+
+# 3. Publicar no GitHub Pages
+git add docs/ steerco/public/data.json apps_script/
+git commit -m "chore: weekly report $(date +'%Y-%m-%d')"
+git push origin main
+```
+
+Para rodar **sem enviar mensagem no Slack** (teste):
+```bash
+/opt/homebrew/bin/python3 scripts/generate_report.py --no-slack
+```
+
+---
+
+## Automação local (launchd) — para rodar toda segunda automaticamente
+
+### 1. Criar o arquivo de automação
+
+```bash
+cat > ~/Library/LaunchAgents/com.christiane.issue-management-report.plist << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.christiane.issue-management-report</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/Users/$(whoami)/issue-management-report/scripts/run_weekly.sh</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key><integer>1</integer>
+    <key>Hour</key><integer>8</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/Users/$(whoami)/issue-management-report/logs/run.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/$(whoami)/issue-management-report/logs/run.log</string>
+</dict>
+</plist>
+EOF
+```
+
+### 2. Ativar a automação
+```bash
+launchctl load ~/Library/LaunchAgents/com.christiane.issue-management-report.plist
+```
+
+### 3. Verificar se está funcionando
+```bash
+launchctl list | grep issue-management   # deve aparecer na lista
+tail -50 ~/issue-management-report/logs/run.log   # log da última execução
+```
+
+### 4. Forçar execução imediata (para testar)
+```bash
+mkdir -p ~/issue-management-report/logs
+launchctl start com.christiane.issue-management-report
+```
+
+> O Mac precisa estar ligado na segunda-feira às 8h para a automação funcionar.
+> Se o Mac estiver desligado, rodar manualmente quando voltar.
 
 ---
 
 ## Manutenção recorrente
 
-### Se aparecerem itens com BA = "TBD" no report
+### Token do Databricks expirou (erro 401 ou 403)
 
-O script já exclui automaticamente itens sem Business Area resolvida. Se estiver excluindo muitos itens, pode ser que o Mantiqueira não tenha o funcionário cadastrado. Nesse caso, adicione manualmente em:
+1. Acessar: Databricks → User Settings → Developer → Access Tokens
+2. Gerar novo token
+3. Atualizar `DATABRICKS_TOKEN` no arquivo `.env`
 
+### Alguém aparece sem Business Area no log
+
+O script exibe no terminal:
 ```
-data/config/people_mapping.csv
+AVISO: X pessoa(s) sem BU/BA no mapeamento:
+  -> Nome Sobrenome
 ```
 
-Formato:
+Adicionar a pessoa em `data/config/people_mapping.csv`:
 ```csv
 name,bu,ba
-Nome Completo,Nome da BU,Nome da Business Area
+Nome Completo,Lending,Nome da Business Area
 ```
 
-### Se o token do Databricks expirar
+Depois rodar o script de novo.
 
-1. Gerar novo Personal Access Token no Databricks
-2. Atualizar o secret `DATABRICKS_TOKEN` no GitHub (`Settings → Secrets → DATABRICKS_TOKEN → Update`)
-3. Rodar o workflow manualmente para confirmar
+### Issue ou AP aparece na BA errada
 
-### Se o token do Atlassian expirar
+A Business Area sempre segue o **Responsible** do issue no Projac. Se está errado, verificar quem é o Responsible no Projac e garantir que essa pessoa está no Mantiqueira ou no `people_mapping.csv` com a BA correta.
 
-1. Gerar novo API token em `id.atlassian.com/manage-profile/security/api-tokens`
-2. Atualizar o secret `CONFLUENCE_TOKEN` no GitHub
+### Issue ou AP com dado desatualizado (não sincronizou no Databricks)
 
-### Se o CLASP_CREDENTIALS expirar
+É possível excluir manualmente um item até o Databricks sincronizar.
+No arquivo `scripts/generate_report.py`, no início, existem dois sets:
 
-1. Na máquina local, rodar `clasp login` para renovar o token
-2. Copiar o conteúdo de `~/.clasprc.json`
-3. Atualizar o secret `CLASP_CREDENTIALS` no GitHub
+```python
+EXCLUDED_ISSUES = {'I012319'}   # ← adicionar o código aqui
+EXCLUDED_APS    = {'AP015815'}  # ← adicionar o código aqui
+```
+
+Remover da lista quando o dado estiver correto no Databricks.
 
 ---
 
-## Como rodar localmente (para debug)
+## Estrutura dos arquivos importantes
 
-```bash
-# Clonar o repo
-git clone https://github.com/chrisbelem/issue-management-report.git
-cd issue-management-report
-
-# Criar o .env na raiz com as credenciais
-cat > .env << EOF
-DATABRICKS_HOST=https://nubank-e2-general.cloud.databricks.com
-DATABRICKS_TOKEN=dapi...
-DATABRICKS_WAREHOUSE_ID=...
-SLACK_TOKEN=xoxb-...
-SLACK_CHANNEL=C...
-EOF
-
-# Rodar o script (Python padrão, sem dependências extras)
-python3 scripts/generate_report.py
-
-# Buildar o app React
-cd steerco
-npm ci
-npm run build
-
-# Visualizar localmente
-npm run preview
-# Abre em http://localhost:4173/issue-management-report/steerco/
+```
+issue-management-report/
+├── scripts/
+│   ├── generate_report.py      ← script principal
+│   └── run_weekly.sh           ← orquestra: python → npm build → git push
+├── steerco/
+│   ├── src/components/
+│   │   ├── OverviewTab.jsx     ← gráficos por BA, KPIs, tabela consolidada
+│   │   ├── DetailsTab.jsx      ← issues e APs late com presentation notes
+│   │   ├── LateIssues.jsx      ← cards de issues late
+│   │   └── CriticalAPs.jsx     ← cards de APs críticos
+│   └── public/data.json        ← gerado pelo script (não editar manualmente)
+├── docs/                       ← build do React (GitHub Pages serve daqui)
+├── data/config/
+│   └── people_mapping.csv      ← fallback manual pessoa → BU/BA
+├── .env                        ← credenciais (não está no git — criar manualmente)
+└── HANDOFF.md                  ← este arquivo
 ```
 
 ---
 
-## Contato
+## Lógica de negócio resumida
 
-Dúvidas sobre o projeto: **Christiane Belem** (criadora do report)
+| Campo | Regra |
+|---|---|
+| Quais issues entram | `business_units` contém `"Global Lending"` (campo Treatment do Projac) |
+| Quais APs entram | `ap_business_unit` é `"Global Lending"` ou `"Secured Loans"` |
+| Business Area do issue | Sempre do **Responsible** do issue (lookup no Mantiqueira → fallback no CSV) |
+| Business Area do AP | Sempre do **Responsible** do issue pai (mesma regra) |
+| Status excluídos (issues) | Done, Completed, Cancelled, Risk Accepted |
+| Status excluídos (APs) | Done, Completed, Cancelled, Not Approved |
+
+---
+
+## Dúvidas
+
+Criado por: **Christiane Belem**
