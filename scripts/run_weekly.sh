@@ -19,4 +19,8 @@ git add docs/ steerco/public/data.json apps_script/
 git diff --cached --quiet && echo "[run_weekly] Sem mudanças para commitar." || \
   git commit -m "chore: weekly report $(date +'%Y-%m-%d')" && git push origin main
 
+# 4. Scan de potenciais Issues nos canais do Slack
+echo "[run_weekly] Rodando slack_issue_scanner..."
+/opt/homebrew/bin/python3 scripts/slack_issue_scanner.py
+
 echo "[run_weekly] Concluído."
