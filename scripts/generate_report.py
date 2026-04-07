@@ -44,6 +44,10 @@ ALERT_WINDOW_DAYS = 14
 NPF_BASE_URL      = 'https://nubank.atlassian.net/browse/'
 PROJAC_BASE_URL   = 'https://backoffice.ist.nubank.world/projac/#/im/issues/'
 
+# Issues e APs para excluir manualmente do report (ex: status desatualizado no Databricks)
+EXCLUDED_ISSUES = {'I012319'}
+EXCLUDED_APS    = {'AP015815'}
+
 # Normalização de Business Area — nomes alternativos → nome canônico
 BA_ALIASES = {
     'CPX':                        'Common Product Experience',
@@ -172,6 +176,8 @@ def _db_request(path, method='GET', payload=None):
 
 def db_run_query(sql):
     """Executa SQL no Databricks e retorna list[dict]."""
+    # Timestamp comment forces Databricks to bypass result cache
+    sql = f"-- run:{datetime.now().isoformat()}\n" + sql
     result = _db_request('/api/2.0/sql/statements', 'POST', {
         'warehouse_id': DATABRICKS_WAREHOUSE_ID,
         'statement':    sql,
@@ -610,6 +616,10 @@ def run():
 
         code = safe(row.get('code', ''))
 
+        # Exclusão manual
+        if code in EXCLUDED_ISSUES:
+            continue
+
         # Type + NP&F+ (usando npf_keys direto da tabela)
         npf_key  = parse_npf_keys(row.get('npf_keys', ''))
         if npf_key:
@@ -691,6 +701,10 @@ def run():
         # Filtra para Global Lending no output
         ap_bu = safe(row.get('ap_business_unit', ''))
         if ap_bu not in GL_AP_BUS:
+            continue
+
+        # Exclusão manual
+        if safe(row.get('ap_code', '')) in EXCLUDED_APS:
             continue
 
         issue_link = safe(row.get('issue_link_projac', ''))
@@ -787,9 +801,12 @@ def run():
     # Gera data.json para o app React (SteerCo)
     _write_steerco_data(issues_csv_str, aps_csv_str, ttr_data, datetime.now().strftime('%Y-%m-%d %H:%M'))
 
-    # Envia para o Slack
+    # Envia para o Slack (pode pular com --no-slack)
     generated_at_str = datetime.now().strftime('%Y-%m-%d %H:%M')
-    send_to_slack(output_path, generated_at_str, issues_output, aps_output)
+    if '--no-slack' not in sys.argv:
+        send_to_slack(output_path, generated_at_str, issues_output, aps_output)
+    else:
+        print('  [--no-slack] Envio para o Slack ignorado.')
 
     print(f'\n✓ Dashboard gerado: {output_path}')
     print(f'  Issues processados : {len(issues_output)}')
