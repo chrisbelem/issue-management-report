@@ -150,11 +150,12 @@ function ChartCard({ title, subtitle, children }) {
 
 /* ─── Custom Y-axis tick that highlights selected BA ─────────────────────── */
 function BAYTick({ x, y, payload, selectedBA }) {
+  const label = payload.value.length > 28 ? payload.value.slice(0, 26) + '…' : payload.value
   return (
-    <text x={x} y={y} dy={4} textAnchor="end" fontSize={11}
+    <text x={x} y={y} dy={4} textAnchor="end" fontSize={9}
       fill={selectedBA === payload.value ? '#8A05BE' : '#1A1A2E'}
       fontWeight={selectedBA === payload.value ? 700 : 400}>
-      {payload.value}
+      {label}
     </text>
   )
 }
@@ -306,9 +307,13 @@ export default function OverviewTab({ issues, aps }) {
   const issueStatus = i => i.status === 'Late' ? 'Late' : i.status === 'TBD' ? 'TBD' : i.status === 'In Validation' ? 'In Validation' : 'On Track'
   const apStatus    = a => a.ap_status === 'Late' ? 'Late' : ['Pending Approval','Pending Approval (late)','Pending Validation','Pending Validation (late)','In Validation'].includes(a.ap_status) ? 'Pending' : 'On Track'
 
-  const baIssuesData  = buildBAData(issues.filter(i => i.Type === 'Issue'),             issueStatus)
-  const baPotData     = buildBAData(issues.filter(i => i.Type === 'Potential Issue'),   issueStatus)
-  const baAPsData     = buildBAData(aps,                                                apStatus)
+  // BA charts respond to status filter (but not BA filter — that's the axis itself)
+  const issuesForCharts = issues.filter(i => !selectedStatus || i.status === selectedStatus)
+  const apsForCharts    = aps.filter(a => !selectedStatus || a.ap_status === selectedStatus)
+
+  const baIssuesData  = buildBAData(issuesForCharts.filter(i => i.Type === 'Issue'),           issueStatus)
+  const baPotData     = buildBAData(issuesForCharts.filter(i => i.Type === 'Potential Issue'), issueStatus)
+  const baAPsData     = buildBAData(apsForCharts,                                              apStatus)
 
   // Status donut (BA-filtered)
   const statusCount = issuesBA.reduce((acc, i) => { acc[i.status] = (acc[i.status] || 0) + 1; return acc }, {})
@@ -350,7 +355,7 @@ export default function OverviewTab({ issues, aps }) {
   const barOp = ba => (!selectedBA || selectedBA === ba) ? 1 : 0.3
 
   const BAYAxis = ({ selectedBA }) => ({
-    type: 'category', dataKey: 'ba', width: 150, axisLine: false, tickLine: false,
+    type: 'category', dataKey: 'ba', width: 190, axisLine: false, tickLine: false,
     tick: props => <BAYTick {...props} selectedBA={selectedBA} />
   })
 
