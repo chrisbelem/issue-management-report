@@ -1,21 +1,76 @@
-# Issue Management Report
+# Issue Management Report — Global Lending
 
-Gera automaticamente o dashboard HTML semanal de Issues & Action Plans — **todas as BUs** (sem filtro de área).
+Dashboard automatizado de **Issues & Action Plans do Global Lending**, gerado toda segunda-feira às 8h BRT.
 
 ---
 
-## Como funciona (automático)
+## Como rodar (próximo mês)
 
-O relatório roda **toda segunda-feira às 8h (horário de Brasília)** via GitHub Actions, sem nenhuma ação manual necessária.
+O relatório roda automaticamente via **launchd** no Mac local toda segunda-feira às 8h. Se precisar rodar manualmente:
 
-O pipeline:
-1. Busca todos os Issues e Action Plans no Databricks (sem filtro de BU)
-2. Identifica **Potential Issues** via campo `npf_keys` da tabela `projac_issues` (chave PNPF do Jira)
-3. Enriquece Business Area e Business Unit de cada responsável via **Mantiqueira** (`org_level_6` / `org_level_5`)
-4. Gera o dashboard HTML (filtrado para Global Lending) e envia **3 mensagens no Slack**:
-   - **Mensagem 1:** arquivo HTML pronto para copiar e colar no Google Sites
-   - **Mensagem 2:** contagem de Issues, Potential Issues e APs late, agrupados por Business Area, com links clicáveis para o Projac
-   - **Mensagem 3:** ações pendentes agrupadas por tipo (AP Late, Create AP, etc.), listando os responsáveis
+```bash
+cd ~/issue-management-report
+/opt/homebrew/bin/python3 scripts/generate_report.py
+```
+
+Isso vai:
+1. Buscar dados atualizados do Databricks
+2. Gerar o HTML e o `data.json` para o app React
+3. Enviar 3 mensagens no Slack com o relatório
+
+Depois de rodar, fazer build e publicar:
+
+```bash
+cd steerco
+/opt/homebrew/bin/npm run build
+cd ..
+git add docs/ steerco/public/data.json apps_script/
+git commit -m "chore: weekly report $(date +'%Y-%m-%d')"
+git push origin main
+```
+
+O dashboard fica disponível em: `https://chrisbelem.github.io/issue-management-report/steerco/`
+
+---
+
+## Credenciais (.env)
+
+Arquivo `.env` na raiz do projeto (não está no git):
+
+```
+DATABRICKS_HOST=https://nubank-e2-general.cloud.databricks.com
+DATABRICKS_TOKEN=dapi...          ← expira! renovar no Databricks se der 401
+DATABRICKS_WAREHOUSE_ID=3f3791356e419544
+SLACK_TOKEN=xoxb-...              ← bot token do canal de report
+SLACK_CHANNEL=C09QVFRBB51
+```
+
+### Se o token do Databricks expirar (erro 401/403)
+1. Acessar o workspace Databricks → User Settings → Developer → Access Tokens
+2. Gerar novo token
+3. Atualizar `DATABRICKS_TOKEN` no arquivo `.env`
+
+---
+
+## Automação local (launchd)
+
+O script roda automaticamente via launchd toda segunda-feira às 8h BRT.
+
+Arquivo: `~/Library/LaunchAgents/com.christiane.issue-management-report.plist`
+
+Logs em: `~/issue-management-report/logs/run.log`
+
+Comandos úteis:
+```bash
+# Ver log da última execução
+tail -50 ~/issue-management-report/logs/run.log
+
+# Forçar execução agora
+launchctl start com.christiane.issue-management-report
+
+# Verificar se está carregado
+launchctl list | grep issue-management
+```
 
 ---
 
@@ -23,118 +78,168 @@ O pipeline:
 
 ```
 issue-management-report/
-├── .github/workflows/
-│   └── generate_report.yml     ← pipeline (toda segunda às 8h BRT)
 ├── scripts/
-│   └── generate_report.py      ← script principal
-├── steerco/                    ← app React (SteerCo)
-├── docs/                       ← build servido pelo GitHub Pages
-├── apps_script/                ← versão Google Apps Script
+│   ├── generate_report.py      ← script principal (busca dados + gera dashboard + envia Slack)
+│   └── run_weekly.sh           ← orquestra: python → npm build → git push
+├── steerco/                    ← app React (dashboard interativo para SteerCo)
+│   ├── src/components/
+│   │   ├── OverviewTab.jsx     ← gráficos por BA, KPIs, tabela consolidada com drilldown
+│   │   ├── DetailsTab.jsx      ← issues e APs late com presentation notes
+│   │   ├── LateIssues.jsx      ← cards de issues/potential issues late
+│   │   └── CriticalAPs.jsx     ← cards de APs críticos
+│   └── public/data.json        ← gerado pelo script (não editar manualmente)
+├── docs/                       ← build do React servido pelo GitHub Pages
 ├── template/
-│   └── dashboard_template.html ← template HTML (não editar)
-└── data/
-    └── config/
-        └── people_mapping.csv  ← fallback manual pessoa → BU/BA
+│   └── dashboard_template.html ← template HTML clássico (não editar)
+├── apps_script/                ← versão Google Apps Script
+├── data/
+│   └── config/
+│       └── people_mapping.csv  ← mapeamento manual pessoa → BU/BA (ver seção abaixo)
+├── .github/workflows/
+│   └── generate_report.yml     ← pipeline GitHub Actions (segunda-feira, backup)
+└── .env                        ← credenciais locais (não está no git)
 ```
-
----
-
-## Secrets necessários no GitHub
-
-`Settings → Secrets and variables → Actions`
-
-| Secret | O que é |
-|---|---|
-| `DATABRICKS_HOST` | URL do workspace (ex: `https://nubank-e2-general.cloud.databricks.com`) |
-| `DATABRICKS_TOKEN` | Personal Access Token do Databricks |
-| `DATABRICKS_WAREHOUSE_ID` | ID do SQL Warehouse |
-| `SLACK_TOKEN` | Bot token (`xoxb-...`) com `files:write` e `chat:write` |
-| `SLACK_CHANNEL` | ID do canal onde o report é postado |
-| `APPS_SCRIPT_DEPLOYMENT_ID` | ID do deployment do Google Apps Script |
-| `CLASP_CREDENTIALS` | Conteúdo de `~/.clasprc.json` |
-| `CONFLUENCE_URL` | URL base do Confluence |
-| `CONFLUENCE_EMAIL` | E-mail Atlassian |
-| `CONFLUENCE_TOKEN` | API token Atlassian |
-| `CONFLUENCE_PAGE_ID` | ID da página Confluence |
-
-> ⚠️ Tokens do Databricks e Atlassian têm validade. Se o pipeline falhar com 401/403, renove os tokens.
 
 ---
 
 ## Lógica de dados
 
-### Por que o script busca todas as BUs no Databricks?
+### Filtro Global Lending
 
-O script **não filtra por BU na query SQL** — ele traz issues e APs de todas as áreas intencionalmente. Isso é necessário para que o Mantiqueira consiga resolver corretamente o Business Area e Business Unit de cada responsável, independente de onde essa pessoa trabalha na organização.
-
-O filtro para **Global Lending** é aplicado **depois** do enriquecimento, apenas na geração do HTML:
+O script busca **todos** os issues e APs do Databricks (sem filtro na query SQL). O filtro para Global Lending é aplicado em Python **após** o enriquecimento do Mantiqueira:
 
 | Etapa | Comportamento |
 |---|---|
-| Query Databricks | Traz **tudo** (todas as BUs) |
-| Enriquecimento Mantiqueira | Usa **todos** os dados para mapear BU/BA corretamente |
-| HTML / Slack | Exibe apenas itens de **Global Lending** |
+| Query Databricks | Traz tudo (todas as BUs) |
+| Enriquecimento Mantiqueira | Mapeia BA/BU de todos os responsáveis |
+| Output (HTML/Slack/React) | Exibe apenas itens de Global Lending |
 
-### Issues e Action Plans
-- Busca todos os issues e APs ativos do Databricks (sem filtro de BU na query)
-- Exclui status terminais: `Done`, `Completed`, `Cancelled`, `Risk Accepted`
-- **No HTML:** exibe apenas issues cujo macroprocess é `Global Lending`, `Secured Loans` ou `Lending`, ou cuja `business_units` contém `Global Lending`
-- **No HTML:** exibe apenas APs cuja `ap_business_unit` é `Global Lending` ou `Secured Loans`
+**Issues incluídos:** somente se o campo `business_units` contém `"Global Lending"` (campo "Treatment" do Projac — **não** usa macroprocess).
+
+**APs incluídos:** somente se `ap_business_unit` é `"Global Lending"` ou `"Secured Loans"`.
+
+### Status excluídos (terminais)
+
+Issues com status: `Done`, `Completed`, `Cancelled`, `Risk Accepted`
+
+APs com status: `Done`, `Completed`, `Cancelled`, `Not Approved`
 
 ### Potential Issues
-- Um issue é marcado como **Potential Issue** quando tem `npf_keys` preenchido na tabela `projac_issues`
-- O link NP&F aponta para `https://nubank.atlassian.net/browse/<PNPF-XXXX>`
 
-### Business Area e Business Unit
-- Ambas vêm do **Mantiqueira** (`org_level_6` = Business Area, `org_level_5` = Business Unit)
-- Lookup por email ou `unique_name` do funcionário
-- Fallback manual em `data/config/people_mapping.csv`
+Um issue é marcado como **Potential Issue** quando tem o campo `npf_keys` preenchido na tabela `projac_issues` (chave PNPF do Jira). O link aponta para `https://nubank.atlassian.net/browse/<PNPF-XXXX>`.
 
-### TTR (Time to Remediate)
-- Calculado apenas para issues **Global Lending** fechados (High/Very High) nos últimos 6 meses
+### Business Area — como é determinada
 
----
+A Business Area de cada issue vem **exclusivamente do Issue Responsible** (`responsible_name`):
 
-## Rodar manualmente
+1. Busca o Responsible no Mantiqueira → `org_level_6` = Business Area, `org_level_5` = Business Unit
+2. Se não encontrar no Mantiqueira, busca em `data/config/people_mapping.csv`
+3. Se ainda não encontrar → item excluído do report (BA = TBD)
 
-Pelo GitHub: `Actions → Generate Issue Management Report → Run workflow`
+**Importante:** a BA reflete quem é dono do issue (Responsible), não quem está executando a ação no momento.
 
-Localmente:
-```bash
-cd ~/issue-management-report
+### Normalização de Business Area
 
-# Criar .env com as credenciais
-cat > .env << EOF
-DATABRICKS_HOST=https://nubank-e2-general.cloud.databricks.com
-DATABRICKS_TOKEN=dapi...
-DATABRICKS_WAREHOUSE_ID=...
-SLACK_TOKEN=xoxb-...
-SLACK_CHANNEL=C...
-EOF
+Alguns nomes vêm do Mantiqueira com variações. O script normaliza automaticamente:
 
-python3 scripts/generate_report.py
-```
+| Nome no Mantiqueira | Nome canônico no report |
+|---|---|
+| CPX / Common product experience | Common Product Experience |
+| Unsecured Loans | Unsecured Lending |
+| Lending PJ | PJ Lending |
+| Lending Foundations | Lending Foundations Platforms |
+
+A mesma normalização é aplicada no app React (OverviewTab.jsx → `BA_ALIASES`).
 
 ---
 
-## Manutenção
+## Manutenção mensal
 
-### Se aparecer pessoa sem BU/BA (BA = TBD)
+### 1. Pessoa aparece sem BA (BA = TBD) no log
 
-Adicione manualmente em `data/config/people_mapping.csv`:
+O script avisa no terminal quem está sem BA. Adicionar em `data/config/people_mapping.csv`:
+
 ```csv
 name,bu,ba
 Nome Completo,Nome da BU,Nome da Business Area
 ```
 
-### Se o token do Databricks expirar
-1. Gerar novo token no Databricks
-2. Atualizar `DATABRICKS_TOKEN` em `Settings → Secrets`
-3. Rodar manualmente para confirmar
+Exemplos reais já mapeados:
+- Pessoas do Mexico (Mantiqueira não tem `org_level_6` para MX) → mapeadas manualmente
+- Pessoas de outras áreas que têm responsabilidade em issues GL
 
-### Se o token Atlassian expirar
-1. Gerar novo em `id.atlassian.com/manage-profile/security/api-tokens`
-2. Atualizar `CONFLUENCE_TOKEN` em `Settings → Secrets`
+**Após adicionar**, rodar o script de novo para regenerar com o dado correto.
+
+### 2. Nova Business Area aparece com nome errado
+
+Adicionar o alias em dois lugares:
+
+**`scripts/generate_report.py`** → dicionário `BA_ALIASES`:
+```python
+BA_ALIASES = {
+    ...
+    'Nome vindo do Mantiqueira': 'Nome canônico',
+}
+```
+
+**`steerco/src/components/OverviewTab.jsx`** → objeto `BA_ALIASES`:
+```js
+const BA_ALIASES = {
+  ...
+  'Nome vindo do Mantiqueira': 'Nome canônico',
+}
+```
+
+### 3. Issue aparece na BA errada
+
+Verificar quem é o **Responsible** do issue no Projac. A BA segue sempre o Responsible. Se o Responsible não estiver no Mantiqueira, adicionar em `people_mapping.csv`.
+
+### 4. AP aparece no report mas não deveria
+
+Verificar o status do AP no Projac. Status excluídos: `Done`, `Completed`, `Cancelled`, `Not Approved`. Se o AP tem outro status e não deveria aparecer, verificar se o `ap_business_unit` está correto no Projac.
+
+---
+
+## Slack — 3 mensagens enviadas
+
+| Mensagem | Conteúdo |
+|---|---|
+| 1 | Arquivo HTML pronto para copiar e colar no Google Sites |
+| 2 | Contagem de Issues/Potential Issues/APs late por Business Area, com links Projac |
+| 3 | Ações pendentes por tipo (AP Late, Create AP, etc.) com lista de responsáveis |
+
+---
+
+## App React (SteerCo dashboard)
+
+Dashboard interativo em `https://chrisbelem.github.io/issue-management-report/steerco/`
+
+Funcionalidades:
+- **KPI cards:** número de late (grande) + total (pequeno) por categoria
+- **Gráficos por BA:** Issues, Potential Issues e Action Plans separados — clicar numa barra abre lista de itens no final da página com links Projac
+- **Cross-filtering:** clicar num gráfico ou no donut de status filtra todos os outros gráficos simultaneamente
+- **Tabela consolidada:** visão por Business Area com drilldown — clicar num número abre painel com os itens individuais
+- **Aba Detail:** lista issues e APs late com campo de **Presentation Notes** (notas salvas localmente no browser para usar na apresentação do SteerCo)
+
+### Presentation Notes
+
+As notas da aba Detail são salvas no `localStorage` do browser. Isso significa:
+- Ficam salvas entre sessões no mesmo computador/browser
+- **Não** são sincronizadas com o GitHub nem com outros computadores
+- Se mudar de computador ou limpar o browser, as notas são perdidas
+
+---
+
+## Tabelas do Databricks utilizadas
+
+| Tabela | Finalidade |
+|---|---|
+| `ist__dataset.projac_issues` | Issues do Projac |
+| `ist__dataset.projac_action_plans` | Action Plans do Projac |
+| `etl.br__dataset.jira_issues_status_history` | Histórico de status dos APs |
+| `etl.ist__contract.malhacao__process_journey_macroprocesses` | Nome do macroprocess |
+| `etl.ist__contract.mantiqueira__idents` | Email e unique_name dos funcionários |
+| `etl.br__series_contract.mantiqueira_group_org_chart_levels` | Estrutura org (org_level_5 = BU, org_level_6 = BA) |
 
 ---
 
