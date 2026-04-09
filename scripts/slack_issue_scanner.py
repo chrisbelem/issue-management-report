@@ -22,20 +22,23 @@ from datetime import datetime, timedelta, timezone
 
 # ─── Canais a monitorar ────────────────────────────────────────────────────────
 
-CHANNELS_TO_MONITOR = [
-    'lending-secured-bu-private',
-    'lending-secured-cpx-policy-legal-compliance',
-    'lending-secured-inss-public-employees-pvt',
-    'lending-secured-lending-private-inss-public',
-    'lending-pj-wcl',
-    'lending-pj-invoice',
-    'lending-new-markets-squad',
-    'lending-inss-squad-pvt',
-    'lending-eng-ops',
-]
+# IDs dos canais (botão direito no canal → "View channel details")
+# Formato: { 'CHANNEL_ID': 'nome-do-canal' }
+CHANNELS_TO_MONITOR = {
+    'C034CN3DN4B': 'lending-secured-bu-private',
+    'C02HQDV0U5S': 'lending-secured-cpx-policy-legal-compliance',
+    'C06M9NW1CQK': 'lending-secured-inss-public-employees-pvt',
+    'C04JTD26N2X': 'lending-secured-lending-private-inss-public',
+    'C04QWP5BJAC': 'lending-pj-wcl',
+    'C04LZ5CMKHS': 'lending-pj-invoice',
+    'C028XSE4W0K': 'lending-new-markets-squad',
+    'C04HKDV3N0Y': 'lending-inss-squad-pvt',
+    'C09CGB66M1A': 'lending-eng-ops',
+    'C095R9PFVV2': 'canal-extra-1',
+    'CFTTHEXLM':   'canal-extra-2',
+}
 
 DAYS_BACK    = 7        # janela de análise em dias
-CLAUDE_MODEL = 'claude-sonnet-4-6'
 MAX_MSGS_PER_CHANNEL = 150   # limita para não estourar contexto do Claude
 MAX_MSG_LEN          = 400   # trunca mensagens muito longas
 
@@ -56,20 +59,32 @@ load_env()
 
 SLACK_TOKEN           = os.environ.get('SLACK_TOKEN', '')
 SLACK_CHANNEL         = os.environ.get('SLACK_SCANNER_CHANNEL') or os.environ.get('SLACK_CHANNEL', '')
-ANTHROPIC_API_KEY     = os.environ.get('ANTHROPIC_API_KEY', '')
+LITELLM_API_KEY   = os.environ.get('LITELLM_API_KEY', '')
+LITELLM_BASE_URL  = os.environ.get('LITELLM_BASE_URL', 'https://ist-prod-litellm.nullmplatform.com')
+CLAUDE_MODEL      = 'anthropic/claude-sonnet-4-6'
 
 # ─── Slack API ─────────────────────────────────────────────────────────────────
 
-def slack_get(method, params=None):
+def slack_get(method, params=None, _retries=4):
     url = f'https://slack.com/api/{method}'
     if params:
         url += '?' + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers={'Authorization': f'Bearer {SLACK_TOKEN}'})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        data = json.loads(r.read())
-    if not data.get('ok'):
-        raise RuntimeError(f'Slack API error [{method}]: {data.get("error")}')
-    return data
+    for attempt in range(_retries):
+        try:
+            with urllib.request.urlopen(req, timeout=30) as r:
+                data = json.loads(r.read())
+            if not data.get('ok'):
+                raise RuntimeError(f'Slack API error [{method}]: {data.get("error")}')
+            return data
+        except urllib.error.HTTPError as e:
+            if e.code == 429:
+                wait = int(e.headers.get('Retry-After', 10)) + 2
+                print(f' (rate limit, aguardando {wait}s...)', end=' ', flush=True)
+                time.sleep(wait)
+            else:
+                raise
+    raise RuntimeError(f'Slack API [{method}]: muitas tentativas após rate limit')
 
 
 def resolve_channels(names):
@@ -91,11 +106,25 @@ def resolve_channels(names):
     return name_map
 
 
+def get_thread_replies(channel_id, thread_ts):
+    """Retorna replies de uma thread (exclui a mensagem-pai que já foi coletada)."""
+    params = {'channel': channel_id, 'ts': thread_ts, 'limit': 100}
+    data = slack_get('conversations.replies', params)
+    replies = []
+    for m in data.get('messages', [])[1:]:   # [0] é a mensagem-pai
+        if m.get('bot_id') or m.get('app_id'):
+            continue
+        text = (m.get('text') or '').strip()
+        if text and len(text) >= 5:
+            replies.append(text)
+    return replies
+
+
 def get_messages(channel_id, oldest_ts):
-    """Retorna lista de textos de mensagens humanas desde oldest_ts."""
+    """Retorna threads completas (mensagem-pai + replies) desde oldest_ts."""
     SKIP_SUBTYPES = {'channel_join', 'channel_leave', 'channel_archive',
                      'channel_unarchive', 'bot_message', 'file_share'}
-    messages = []
+    threads = []   # lista de dicts {parent, replies}
     cursor = None
     while True:
         params = {'channel': channel_id, 'oldest': str(oldest_ts), 'limit': 200}
@@ -108,89 +137,117 @@ def get_messages(channel_id, oldest_ts):
             if m.get('bot_id') or m.get('app_id'):
                 continue
             text = (m.get('text') or '').strip()
-            if not text or len(text) < 10:   # ignora reações e mensagens muito curtas
+            if not text or len(text) < 5:
                 continue
-            messages.append(text)
+            thread = {'parent': text, 'replies': []}
+            # Se tem replies, busca o conteúdo completo da thread
+            if m.get('reply_count', 0) > 0:
+                try:
+                    thread['replies'] = get_thread_replies(channel_id, m['ts'])
+                    time.sleep(0.3)
+                except RuntimeError:
+                    pass
+            threads.append(thread)
         cursor = data.get('response_metadata', {}).get('next_cursor', '')
         if not cursor or not data.get('has_more'):
             break
         time.sleep(0.3)
-    return messages
+    return threads
 
 # ─── Claude API ────────────────────────────────────────────────────────────────
 
 def ask_claude(messages_payload):
+    """Chama o LiteLLM proxy interno do Nubank (formato OpenAI-compatible)."""
     body = json.dumps({
         'model': CLAUDE_MODEL,
         'max_tokens': 4000,
         'messages': messages_payload,
     }).encode()
     req = urllib.request.Request(
-        'https://api.anthropic.com/v1/messages',
+        f'{LITELLM_BASE_URL}/v1/chat/completions',
         data=body,
         headers={
-            'x-api-key': ANTHROPIC_API_KEY,
-            'anthropic-version': '2023-06-01',
+            'Authorization': f'Bearer {LITELLM_API_KEY}',
             'content-type': 'application/json',
         }
     )
     with urllib.request.urlopen(req, timeout=90) as r:
-        return json.loads(r.read())['content'][0]['text']
+        return json.loads(r.read())['choices'][0]['message']['content']
 
 # ─── Prompt ────────────────────────────────────────────────────────────────────
 
 ANALYSIS_PROMPT = """\
-Você é especialista em gestão de riscos operacionais do Nubank Global Lending.
+You are a risk management expert supporting the Global Lending team at Nubank.
 
-Analise as mensagens dos canais do Slack abaixo e identifique situações que deveriam \
-ser registradas como um Issue no Projac (sistema de gestão de issues de risco).
+Analyze the Slack messages below and identify situations that should be registered \
+as an Issue in Projac, following Nubank's Issue Management Methodology.
 
-## Critérios para registrar um Issue no Projac
+## Nubank's official definition
 
-**DEVE virar Issue:**
-- Falha operacional ou incidente recorrente (mesmo que já resolvido)
-- Problema regulatório, de compliance ou auditoria sem resolução
-- Risco identificado sem plano de mitigação definido
-- Decisão de negócio que cria exposição a risco (produto novo, mudança de processo)
-- Problema de processo afetando clientes, parceiros ou parceiros de negócio
-- Prazo regulatório próximo sem ação documentada
+An **Issue** is a **control gap or deficiency** resulting from an internal or external \
+source that poses a **new risk or an increased level of known risk** to Nubank. \
+It may arise from systems, processes, and/or personnel — including non-compliance \
+with policies, standards, and regulations.
 
-**NÃO deve virar Issue:**
-- Discussões operacionais do dia a dia sem risco identificado
-- Perguntas técnicas com respostas satisfatórias
-- Deploy, manutenção planejada ou mudanças sem incidentes
-- Avisos internos, celebrações, onboarding
+## Must be registered as an Issue
 
-## Mensagens analisadas
+- A control is missing, ineffective, or insufficient to mitigate a known risk
+- Non-compliance with internal policies, regulatory requirements, or standards
+- A risk event that materialized (incident, loss, regulatory finding)
+- **Any finding, observation, or question raised by a regulator or external auditor** \
+(e.g. CGU, Bacen, external audit, SOX auditors) — even if still under discussion or \
+response. These must always be registered as Issues because they represent an \
+opportunity to identify and implement controls to mitigate the reported risk. \
+Risk acceptance is NOT permitted for regulator findings.
+- A recurring issue — previously identified but not fully resolved
+- A process or system gap that exposes the company to new or increased risk
+
+## Must NOT be flagged as an Issue
+
+- Operational discussions, questions, or decisions without an identified control gap
+- Incidents that were fully resolved with no residual risk or gap remaining
+- NP&F+ assessments (these follow a separate "Potential Issue" process)
+- Routine updates, announcements, celebratory messages, or onboarding
+- Risks already being managed with documented action plans in Projac
+
+## Slack messages to analyze
 
 {channel_content}
 
-## Resposta esperada
+## Expected output
 
-Para cada potencial Issue identificado, retorne:
+For each potential Issue found, return:
 
-**Issue potencial N:** [título curto]
-- **Canal:** #nome-do-canal
-- **Resumo:** o que aconteceu / qual o risco em 2–3 frases
-- **Por que é um Issue:** justificativa baseada nos critérios
-- **Responsável sugerido:** nome mencionado nas mensagens ou área responsável (se identificável)
-- **Urgência:** 🔴 Alta / 🟡 Média / 🟢 Baixa
+**Potential Issue N:** [short title in English, as it would appear in Projac]
+- **Channel:** #channel-name
+- **Summary:** What happened and what control gap or risk it represents (2–3 sentences)
+- **Why it qualifies as an Issue:** Reference to the specific control gap or deficiency, \
+and why it poses new or increased risk per Nubank's methodology
+- **Suggested owner:** Name or team mentioned in the messages, if identifiable
+- **Suggested rating:** 🔴 Very High / 🔴 High / 🟡 Medium / 🟢 Low — with brief justification
 
-Se nenhuma mensagem indicar necessidade de registro, diga: \
-"Nenhum potencial Issue identificado esta semana."
+If no messages indicate a genuine control gap or deficiency, respond: \
+"No potential Issues identified this week."
 
-Responda em português.
+Be conservative: only flag situations with a clear control gap. \
+Do not flag general risks, discussions, or resolved incidents.
 """
 
 
-def build_channel_content(channel_messages: dict) -> str:
+def build_channel_content(channel_threads: dict) -> str:
     parts = []
-    for channel, msgs in channel_messages.items():
-        if not msgs:
+    for channel, threads in channel_threads.items():
+        if not threads:
             continue
-        sample = msgs[-MAX_MSGS_PER_CHANNEL:]   # mais recentes primeiro
-        formatted = '\n'.join(f'  • {m[:MAX_MSG_LEN]}{"…" if len(m) > MAX_MSG_LEN else ""}' for m in sample)
-        parts.append(f'### #{channel} ({len(msgs)} mensagens)\n{formatted}')
+        sample = threads[-MAX_MSGS_PER_CHANNEL:]
+        lines = []
+        for t in sample:
+            parent = t['parent'][:MAX_MSG_LEN] + ('…' if len(t['parent']) > MAX_MSG_LEN else '')
+            lines.append(f'  • {parent}')
+            for reply in t['replies'][:20]:   # máx 20 replies por thread
+                r = reply[:MAX_MSG_LEN] + ('…' if len(reply) > MAX_MSG_LEN else '')
+                lines.append(f'      ↳ {r}')
+        parts.append(f'### #{channel} ({len(threads)} threads)\n' + '\n'.join(lines))
     return '\n\n'.join(parts) if parts else '(nenhuma mensagem encontrada)'
 
 # ─── Slack output ──────────────────────────────────────────────────────────────
@@ -219,8 +276,8 @@ def main():
     missing = []
     if not SLACK_TOKEN:
         missing.append('SLACK_TOKEN')
-    if not ANTHROPIC_API_KEY:
-        missing.append('ANTHROPIC_API_KEY')
+    if not LITELLM_API_KEY:
+        missing.append('LITELLM_API_KEY')
     if not no_slack and not SLACK_CHANNEL:
         missing.append('SLACK_CHANNEL (ou SLACK_SCANNER_CHANNEL)')
     if missing:
@@ -231,25 +288,9 @@ def main():
     week_label = datetime.now().strftime('%d/%m/%Y')
     print(f'[slack_issue_scanner] Período: últimos {DAYS_BACK} dias (até {week_label})')
 
-    # 1. Resolver nomes → IDs
-    print('[slack_issue_scanner] Resolvendo IDs dos canais...')
-    try:
-        channel_map = resolve_channels(set(CHANNELS_TO_MONITOR))
-    except RuntimeError as e:
-        print(f'ERRO ao listar canais: {e}')
-        print('  Verifique se o SLACK_TOKEN tem permissões: channels:read, groups:read')
-        sys.exit(1)
-
-    missing_channels = [c for c in CHANNELS_TO_MONITOR if c not in channel_map]
-    if missing_channels:
-        print(f'  AVISO: canais não encontrados (bot não convidado?): {", ".join(missing_channels)}')
-
-    # 2. Buscar mensagens
+    # Buscar mensagens usando IDs diretamente (sem precisar listar todos os canais)
     channel_messages = {}
-    for name in CHANNELS_TO_MONITOR:
-        ch_id = channel_map.get(name)
-        if not ch_id:
-            continue
+    for ch_id, name in CHANNELS_TO_MONITOR.items():
         print(f'  -> #{name}...', end=' ', flush=True)
         try:
             msgs = get_messages(ch_id, oldest_ts)
@@ -258,7 +299,7 @@ def main():
                 channel_messages[name] = msgs
         except RuntimeError as e:
             print(f'ERRO: {e} (bot foi convidado neste canal?)')
-        time.sleep(0.2)
+        time.sleep(0.5)
 
     total_msgs = sum(len(v) for v in channel_messages.values())
     if total_msgs == 0:
