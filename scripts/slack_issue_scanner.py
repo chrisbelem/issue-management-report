@@ -25,7 +25,6 @@ from datetime import datetime, timedelta, timezone
 # IDs dos canais (botão direito no canal → "View channel details")
 # Formato: { 'CHANNEL_ID': 'nome-do-canal' }
 CHANNELS_TO_MONITOR = {
-    'C034CN3DN4B': 'lending-secured-bu-private',
     'C02HQDV0U5S': 'lending-secured-cpx-policy-legal-compliance',
     'C06M9NW1CQK': 'lending-secured-inss-public-employees-pvt',
     'C04JTD26N2X': 'lending-secured-lending-private-inss-public',
@@ -34,8 +33,6 @@ CHANNELS_TO_MONITOR = {
     'C028XSE4W0K': 'lending-new-markets-squad',
     'C04HKDV3N0Y': 'lending-inss-squad-pvt',
     'C09CGB66M1A': 'lending-eng-ops',
-    'C095R9PFVV2': 'canal-extra-1',
-    'CFTTHEXLM':   'canal-extra-2',
 }
 
 DAYS_BACK    = 7        # janela de análise em dias
@@ -120,11 +117,17 @@ def get_thread_replies(channel_id, thread_ts):
     return replies
 
 
+def make_slack_link(channel_id, ts):
+    """Constrói link direto para a thread no Slack."""
+    ts_clean = ts.replace('.', '')
+    return f'https://nubank.slack.com/archives/{channel_id}/p{ts_clean}'
+
+
 def get_messages(channel_id, oldest_ts):
     """Retorna threads completas (mensagem-pai + replies) desde oldest_ts."""
     SKIP_SUBTYPES = {'channel_join', 'channel_leave', 'channel_archive',
                      'channel_unarchive', 'bot_message', 'file_share'}
-    threads = []   # lista de dicts {parent, replies}
+    threads = []
     cursor = None
     while True:
         params = {'channel': channel_id, 'oldest': str(oldest_ts), 'limit': 200}
@@ -139,8 +142,11 @@ def get_messages(channel_id, oldest_ts):
             text = (m.get('text') or '').strip()
             if not text or len(text) < 5:
                 continue
-            thread = {'parent': text, 'replies': []}
-            # Se tem replies, busca o conteúdo completo da thread
+            thread = {
+                'parent': text,
+                'link': make_slack_link(channel_id, m['ts']),
+                'replies': [],
+            }
             if m.get('reply_count', 0) > 0:
                 try:
                     thread['replies'] = get_thread_replies(channel_id, m['ts'])
@@ -220,6 +226,7 @@ For each potential Issue found, return:
 
 **Potential Issue N:** [short title in English, as it would appear in Projac]
 - **Channel:** #channel-name
+- **Thread:** [paste the thread_link URL from the message that originated this Issue]
 - **Summary:** What happened and what control gap or risk it represents (2–3 sentences)
 - **Why it qualifies as an Issue:** Reference to the specific control gap or deficiency, \
 and why it poses new or increased risk per Nubank's methodology
@@ -243,8 +250,8 @@ def build_channel_content(channel_threads: dict) -> str:
         lines = []
         for t in sample:
             parent = t['parent'][:MAX_MSG_LEN] + ('…' if len(t['parent']) > MAX_MSG_LEN else '')
-            lines.append(f'  • {parent}')
-            for reply in t['replies'][:20]:   # máx 20 replies por thread
+            lines.append(f'  • [thread_link: {t["link"]}] {parent}')
+            for reply in t['replies'][:20]:
                 r = reply[:MAX_MSG_LEN] + ('…' if len(reply) > MAX_MSG_LEN else '')
                 lines.append(f'      ↳ {r}')
         parts.append(f'### #{channel} ({len(threads)} threads)\n' + '\n'.join(lines))
